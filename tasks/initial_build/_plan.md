@@ -45,9 +45,15 @@ undoing the core. If the flash-hook half of 09 is a dead end, the title-watcher 
   `IsWindowVisible == false`, confirmed both by a controlled `FlashWindowEx` A/B on one window and
   by an unrelated third-party app flashing while hidden. The earlier suspicion that a missing
   taskbar button would suppress them was wrong. `HSHELL_RUDEAPPACTIVATED` never fired at all and
-  is not used. What the spike *did* disprove is the terminal-bell path: a Windows Terminal bell
-  produced no flash in any configuration tried, so **Claude Code done/waiting detection rests on
-  the title watcher** (`EVENT_OBJECT_NAMECHANGE`, which also fires regardless of visibility).
+  is not used. **Claude Code arrives on both channels, at very different speeds — and the decision
+  is to use the flash.** A re-test on 2026-08-15 showed a Windows Terminal bell *does* raise
+  `HSHELL_FLASH`, including while the window is `SW_HIDE`-hidden; task 01's original negative used
+  the invalid `bellStyle` value `"taskbarFlash"` and so tested nothing at all. Claude Code rings
+  that bell **61.1 s after the session goes idle** (five sessions, consistent to 0.1 s), whereas
+  the `✳` title marker appears immediately. **The user accepted the minute of latency**: task 09
+  ships no Claude Code title rule and badges terminals from the flash like any other app, keeping
+  one mechanism and no per-app regexes. The title is still parsed, but only so the overview can
+  show a session's live progress (task 07 § F).
   UI Automation badge reading rejected for v1 (brittle against Teams UI updates, CPU-heavier).
 - **Teams, measured (task 01).** With real messages from a second account: Teams flashes
   identically whether its window is visible, minimized, or `SW_HIDE`-hidden, so the headline
@@ -111,7 +117,8 @@ undoing the core. If the flash-hook half of 09 is a dead end, the title-watcher 
   until then, spike/test programs must re-show every window they hide before exiting, even on
   Ctrl+C (`Console.CancelKeyPress`) and on unhandled exceptions.
 - Manual verification scripts in each task name the apps to test with: Windows Terminal
-  (with `"bellStyle": "taskbarFlash"` available), VS Code, a Chromium browser (Edge or Chrome,
+  (with `"bellStyle"` including `"taskbar"` — note `"taskbarFlash"` is **not** a valid value and
+  is silently ignored), VS Code, a Chromium browser (Edge or Chrome,
   multiple windows of one process), and new Teams if installed. Record observed results in the
   task file's **Record on completion**.
 - Screenshots and throwaway spike programs live inside this folder (`screenshots/`,

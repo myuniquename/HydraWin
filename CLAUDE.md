@@ -29,11 +29,20 @@ placements. Background windows that want attention raise a badge on their task r
   detected, marked in the UI, and skipped — never half-handled.
 - **Both notification channels reach hidden windows** — task 01 measured this, contradicting the
   original assumption that a missing taskbar button would suppress flashes. `HSHELL_FLASH` is
-  delivered for `SW_HIDE`-hidden windows (confirmed for real Teams messages), and
-  `EVENT_OBJECT_NAMECHANGE` fires regardless of visibility. The two channels are **disjoint, not
-  primary/fallback**: Claude Code is title-only (its terminal bell never flashes), Teams is
-  flash-only (it never changes its window title). Teams also flashes only once per unread run, so
-  its badge must be cleared by focus alone. Trust task 01's recorded results, not assumptions.
+  delivered for `SW_HIDE`-hidden windows (confirmed for real Teams messages and for a hidden
+  Windows Terminal bell), and `EVENT_OBJECT_NAMECHANGE` fires regardless of visibility. Teams
+  never changes its window title, and it flashes only once per unread run, so its badge must be
+  cleared by focus alone. Trust task 01's recorded results, not assumptions.
+- **Claude Code notifies by flash, 61 seconds late; its title is for display only.** A Windows
+  Terminal bell does raise `HSHELL_FLASH` given a valid `bellStyle` — `"all"`/`"audible"`/
+  `"window"`/`"taskbar"`; **`"taskbarFlash"` is not valid and is silently ignored**, which is what
+  made task 01's first two answers wrong. Claude Code rings that bell **~61 s after a session goes
+  idle** (61.1 s across five sessions, consistent to 0.1 s). The user accepted that latency:
+  **task 09 ships no Claude Code title rule** and badges it from the flash like any other app.
+  The `<marker> <name>` title — spinner `◐ ◑ ◒ ◓` (`U+25D0`–`U+25D3`) while working, `✳`
+  (`U+2733`) when idle — is still parsed, but only to show live progress in the overview
+  (task 07 § F). Requires `bellStyle` to include `"taskbar"` and Claude Code's
+  `preferredNotifChannel` to be `terminal_bell`.
 
 ## Style
 

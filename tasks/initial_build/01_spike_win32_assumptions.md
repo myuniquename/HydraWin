@@ -53,7 +53,9 @@ hidden it still receives messages (send yourself one).
 ### B. `spikes/FlashProbe` — flash observability
 Program: creates a message-only-style hidden host window (a real top-level window is fine),
 calls `RegisterShellHookWindow`, listens for the `SHELLHOOK` message, and logs every
-(wParam, hwnd, title) pair. Procedure: set Windows Terminal `"bellStyle": "taskbarFlash"`, ring
+(wParam, hwnd, title) pair. Procedure: set Windows Terminal `"bellStyle": "taskbar"` (**not**
+`"taskbarFlash"` — as originally written here; that is not an accepted value, Terminal ignores it,
+and it invalidated the first run of this spike), ring
 the bell (`printf '\a'`) while the terminal is visible-but-background → expect `0x8006`. Then
 hide the terminal with `SW_HIDE` (use spike A's code), ring the bell again → record whether
 anything arrives. Also record what Teams produces on an incoming message, visible and hidden.
@@ -125,22 +127,87 @@ Of 472 `HSHELL_FLASH` messages captured, 454 were for windows that were not visi
 window creation, activation, hiding, showing and flashing. It is not a useful signal here.
 
 **Caveat that matters more than the answer.** Delivery works; what is not guaranteed is that the
-*app* calls `FlashWindowEx` while it is hidden. Specifically, **a Windows Terminal bell never
-produced a flash** in this environment. With `"bellStyle": "taskbarFlash"` in `profiles.defaults`
-(and again with the array form `["audible", "window", "taskbarFlash"]`), a BEL emitted from
-inside the session produced no `0x8006` in any of three attempts:
+*app* calls `FlashWindowEx` in the first place.
 
-- `[Console]::Out.Write([char]7)` from PowerShell, window minimized — 15 bells, nothing.
-- `cmd /c type` of a file containing a single `0x07` byte, window visible-but-background —
-  30 bells, nothing.
-- `printf '\a'` from a VT-native WSL app, window visible-but-background — 30 bells, nothing.
-  The same WSL process's `printf '\033]0;…\007'` **did** retitle the window
-  (`19:16:53.671 … "HYDRAWIN-WSLBELL"`), so raw VT was reaching Windows Terminal.
+> ### RETRACTED, and re-measured on 2026-08-15 (see *Bell re-test* below)
+>
+> This section originally read *"a Windows Terminal bell never produced a flash"*, based on runs
+> using `"bellStyle": "taskbarFlash"`. **`taskbarFlash` is not a valid value** — Windows Terminal
+> accepts only `"all"`, `"audible"`, `"window"`, `"taskbar"`, `"none"`. Terminal therefore ignored
+> the setting and no bell could ever have flashed anything. Every "negative" in the original three
+> attempts was testing a setting that was never in effect. **A Windows Terminal bell does flash,
+> including while the window is `SW_HIDE`-hidden, and Claude Code does ring it — about 61 s after
+> a session goes idle.** Details below.
 
-Windows Terminal *can* flash — a WT window emitted three genuine `0x8006` at startup
-(`19:10:23.087`, `19:10:24.157`, `19:10:25.208`) while visible-but-background. The bell path
-specifically is what did not fire. **Consequence: do not build Claude Code notification on the
-terminal bell.** The title watcher is the channel for terminals (see Q3).
+### Bell re-test (2026-08-15, `reference/flashprobe-bell.log`)
+
+Prompted by the user, who had configured `bellStyle` correctly:
+`profiles.defaults.bellStyle = ["audible", "window", "taskbar"]`, plus
+`"preferredNotifChannel": "terminal_bell"` in `~/.claude/settings.json`.
+
+**1. A BEL flashes the taskbar, from both emission paths.** Six bells three seconds apart, from
+two windows made visible-but-background:
+
+```
+21:52:54.021 | 0x8006 | HSHELL_FLASH | 0x01FA14C4 | vis=Y | WindowsTerminal | "BELL-PWSH"   ← [Console]::Out.Write([char]7)
+21:52:57.151 | 0x8006 | HSHELL_FLASH | 0x003C12E4 | vis=Y | WindowsTerminal | "BELL-WSL"    ← WSL printf '\a'
+```
+
+Six bells produced six flashes on each window. The ConPTY path (a Win32 console app writing BEL
+through the console API) works just as well as the VT-native one — the original record's
+speculation that ConPTY swallows BEL was also wrong.
+
+**2. A hidden terminal still flashes.** The window was hidden with `SW_HIDE` through the spike's
+journalled path, then rung eight times:
+
+```
+21:55:35.147 | 0x0002 | HSHELL_WINDOWDESTROYED | 0x002E0284 | vis=n | WindowsTerminal | "BELL-HIDDEN"   ← our SW_HIDE
+21:55:37.646 | 0x8006 | HSHELL_FLASH           | 0x002E0284 | vis=n | WindowsTerminal | "BELL-HIDDEN"
+…                                                                                     (8 flashes, 3 s apart)
+21:55:58.672 | 0x8006 | HSHELL_FLASH           | 0x002E0284 | vis=n | WindowsTerminal | "BELL-HIDDEN"
+```
+
+So Windows Terminal, unlike the sending-side limitation feared above, keeps flashing with no
+taskbar button.
+
+**3. Claude Code rings the bell — 61 seconds after it goes idle.** I first recorded "it never
+rings" here; that was wrong too, and the disproof was already inside my own log. I had grepped
+20–25 s after each session finished. The user pointed out that the flash arrives late, and
+measuring the gap between the idle-marker title and the flash gives a startlingly consistent
+answer across five independent sessions:
+
+```
+0x00151430  idle 21:55:11.743  ->  flash 21:56:12.813   delay 61.1s   "✳ Respond with pong"
+0x000E15E8  idle 21:58:22.170  ->  flash 21:59:23.237   delay 61.1s   "✳ Run bash sleep command and confirm completion"
+0x003F1512  idle 22:00:35.602  ->  flash 22:01:36.664   delay 61.1s   "✳ Run background sleep command and monitor completion"
+0x00630C56  idle 22:02:06.377  ->  flash 22:03:07.444   delay 61.1s   "✳ Run background sleep command and confirm completion"
+0x00A515E6  idle 22:02:11.084  ->  flash 22:03:12.149   delay 61.1s   "✳ Write poem and check git status"
+```
+
+**61.1 s in every case, to within 0.1 s** — a deliberate fixed delay, not jitter. One flash per
+session, not a repeating train. It fires whether the session was a child of another Claude Code
+session or not, and regardless of `CLAUDE_AFK_TIMEOUT_MS`.
+
+**So both channels carry a Claude Code signal, with very different latency:**
+
+| Channel | Latency | Content |
+| --- | --- | --- |
+| Title (`✳` marker appears) | immediate | distinguishes busy from done/waiting, carries the session name |
+| Flash (`HSHELL_FLASH`) | **~61 s** | "this window wants attention", nothing more |
+
+**Consequence, and the decision taken:** the title watcher detects a finished session a full
+minute before the flash does. Presented with that number, **the user chose the flash and accepted
+the latency** — task 09 therefore ships **no Claude Code title rule**, and a finished session
+badges through the same flash channel as Teams, keeping one mechanism and no per-app regexes.
+
+The Claude Code title is still parsed, for a different purpose: **task 07 § F** binds window rows
+to the live title so the overview shows a session's marker (`◐ ◑ ◒ ◓` working, `✳` idle) as an
+in-progress indication without the user switching to it. Display, not notification — which is also
+why the "`✳` appears briefly at the start of an activity" caveat no longer matters.
+
+Two settings this depends on, worth stating because a default install has neither: Windows
+Terminal `bellStyle` must include `"taskbar"`, and Claude Code's `preferredNotifChannel` must be
+`terminal_bell`.
 
 ### Q2 — Does hide → show round-trip cleanly for the real target apps?
 
@@ -346,16 +413,19 @@ reader behaviour for a partially-written line.
 
 - `_plan.md` § *Investigation results* — the notifications bullet claimed flashes from hidden
   windows "may be unobservable". Corrected to the measured result.
-- `09_notifications.md` — the flash hook is documented as working for hidden windows; the
-  `TUNE-FROM-SPIKE` placeholder is replaced with the measured Claude Code regex; the terminal-bell
-  verification step is rewritten (it cannot pass as written); the Teams title rule is deleted as
-  disproved and replaced by the flash-only reality plus the hidden-Teams gap.
+- `09_notifications.md` — the flash hook is documented as working for hidden windows; the Teams
+  title rule is deleted as disproved; the terminal-bell verification step is rewritten (the bell
+  is now the *easiest* way to exercise the flash path); and, after the bell re-test, the Claude
+  Code title rule is deleted too.
   **Answer to the question the task poses — "should task 09 treat the title watcher as primary?"
-  — is: per app, not globally.** The two channels turn out to be disjoint rather than
-  primary/fallback. Claude Code is title-only (its bell never flashes); Teams is flash-only (its
-  title never changes). Both channels work for `SW_HIDE`-hidden windows, so hiding costs no
-  awareness for either app. Implement both, and do not think of the flash hook as a
-  visible-window fallback.
+  — is: no, the flash carries every app.** Teams is flash-only because its title never changes;
+  Claude Code *could* go either way — its title is instant and its flash is 61 s late — and the
+  user chose the flash, accepting the latency to avoid per-app regexes. Both channels work for
+  `SW_HIDE`-hidden windows, so hiding costs no awareness either way. The title watcher survives as
+  a user-extensible mechanism (task 10) and as the source of live progress display (task 07 § F).
+- `07_ui_shell.md` — new § F: window rows bind to the live title so a Claude Code session's
+  progress marker is visible in the overview without switching to it, with the measured
+  ~1 event/second/terminal cost noted.
 - `06_switch_engine.md` — the "refuses `SW_HIDE`" branch is kept, but its description was wrong on
   two counts: packaged Teams does **not** refuse, and the failure does not "return success but stay
   visible". Corrected to the measured elevated-window signature.

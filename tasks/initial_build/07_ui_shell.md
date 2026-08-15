@@ -41,9 +41,10 @@ Layout target (single resizable window, ~900×600 default):
 ### A. ViewModels (`HydraWin.App/ViewModels/`)
 `MainViewModel` (owns children, wires service events), `TaskViewModel` (Name, ColorHex,
 WindowCount, IsActive, NotificationCount placeholder — task 09 fills it, ordered
-`WindowViewModel` children, IsExpanded), `WindowViewModel` (Title, ProcessName, Icon,
-IsHydraWinHidden, source `TrackedWindow`/assignment ids), `UnassignedListViewModel` (tracked
-windows minus bound ones, live). All updates flow from Core events; no polling in the UI.
+`WindowViewModel` children, IsExpanded), `WindowViewModel` (Title — **live, see § F**,
+ProcessName, Icon, IsHydraWinHidden, source `TrackedWindow`/assignment ids),
+`UnassignedListViewModel` (tracked windows minus bound ones, live). All updates flow from Core
+events; no polling in the UI.
 
 ### B. Views
 - Task list: `ListBox` of expandable task rows (Expander or toggled `ItemsControl`), color chip,
@@ -85,6 +86,32 @@ record if used.
 Delete the task 03 harness list and the task 05/06 debug commands; this UI is now the only
 driver.
 
+### F. Live titles, and Claude Code progress in the overview
+Window rows show the **live** window title: `WindowViewModel.Title` is bound to and updated from
+`WindowTracker.WindowTitleChanged`, so a row reflects what the window is doing right now without
+the user switching to it. This matters most for Claude Code terminals, and is an explicit user
+requirement — task 09 deliberately ships **no** Claude Code notification rule (the flash covers
+"finished", a minute late), so the overview is the only place in-progress state is visible.
+
+Task 01 measured the format: an interactive Claude Code session titles its terminal
+`<marker> <session or activity name>`, where the marker is
+
+- a rotating spinner frame `U+25D0`–`U+25D3` (`◐ ◑ ◒ ◓`) while **working**, advancing about once
+  per second, and
+- `U+2733` (`✳`) when it is **idle / waiting for input**, after which the title stops changing.
+
+Surface that as a per-window in-progress indication — e.g. the marker glyph or a small spinner in
+the row, with the remaining title text as the label — and let it roll up to the task row so a
+collapsed task still shows that something inside it is working.
+
+Two measured constraints:
+- **~1 title event per second per busy terminal.** Binding straight through is fine for a handful
+  of sessions; keep per-event work cheap and do not re-sort or re-filter the whole list on each
+  one.
+- **Do not treat the marker as a notification.** `✳` also appears momentarily at the start of an
+  activity, and the badge for "Claude finished" comes from the flash channel in task 09. This
+  section is about *display* only.
+
 ## Verification
 
 Full walkthrough on a real desktop (record each step's observed result):
@@ -100,7 +127,12 @@ Full walkthrough on a real desktop (record each step's observed result):
    reopen the same folder → auto re-attaches to Beta with the status-bar notice.
 7. Delete Beta while Alpha is active → Beta's hidden windows reappear immediately, all its
    windows land in unassigned, none closed.
-8. `dotnet build` warning-free; `dotnet test` totals pasted.
+8. Live titles (§ F): start a Claude Code prompt in an assigned terminal and watch its row without
+   switching to it — the title tracks the session, the in-progress indication is visible while the
+   spinner marker cycles, and it clears when the title settles on `✳`. Repeat with that task
+   *hidden* — the row must still update, since name-change events do not require visibility.
+   Confirm no UI stutter with two busy sessions at once (~2 title events/second).
+9. `dotnet build` warning-free; `dotnet test` totals pasted.
 
 ## Record on completion
 

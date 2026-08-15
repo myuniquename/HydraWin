@@ -38,12 +38,17 @@ Two signal sources:
   too** — the message arrives with `IsWindowVisible == false`, so treat it as a full second
   channel, not a visible-only fallback. Do *not* bother with `HSHELL_RUDEAPPACTIVATED`: it never
   fired once in 1311 captured shell-hook messages.
-  The limitation is on the *sending* side: a Windows Terminal bell produced no flash at all in
-  task 01, under either `bellStyle` form and whether the BEL came from a Win32 console app or a
-  VT-native one. So the flash hook is expected to carry Teams-style "wants attention", not
-  terminal bells.
-- **Title watcher** — rule-driven interpretation of `WindowTitleChanged`. **This is the primary
-  channel for Claude Code**, since the bell does not flash.
+  A Windows Terminal bell **does** raise `HSHELL_FLASH` — from a Win32 console app and a VT-native
+  one alike, and even while the window is `SW_HIDE`-hidden — provided `bellStyle` is valid
+  (`"taskbarFlash"`, used in task 01's original test, is not). Claude Code rings it too, but
+  **~61 s after the session goes idle** (61.1 s across five measured sessions). **This is now the
+  channel for Claude Code as well**: the user accepted the minute of latency in exchange for
+  having no per-app title rules. It requires `bellStyle` to include `"taskbar"` and Claude Code's
+  `preferredNotifChannel` to be `terminal_bell`; if either is unset the badge simply does not
+  appear, which is a configuration matter, not a bug to work around here.
+- **Title watcher** — rule-driven interpretation of `WindowTitleChanged`. Retained as the generic
+  mechanism (task 10 lets the user add rules), but **no default rule ships for Claude Code**. The
+  Claude Code title is consumed for *live display* instead — task 07 § F.
 
 ## Work
 
@@ -57,14 +62,12 @@ matches `TitleRegex` (and, for done-style rules, the old title did not — edge-
 level-triggered, so a persistent "(2) Teams" title badges once, not on every repaint).
 Compiled with `RegexOptions.IgnoreCase`, 100 ms timeout. Ship defaults in `SettingsModel`
 (seeded on first run, user-editable in `state.json`; UI editor is task 10):
-- Claude Code done/waiting: process `WindowsTerminal.exe` (and `wt.exe`), regex `^✳\s`
-  (`✳`, U+2733). Label "Claude done". Measured in task 01: an interactive Claude Code session
-  titles its terminal `<marker> <session name>`, cycling spinner frames `U+25D0`–`U+25D3`
-  (`◐ ◑ ◒ ◓`) about **once per second** while busy, and settling on `✳` when it finishes or waits
-  for input — after which the title stops changing entirely. Edge-triggering therefore does the
-  right thing. Two measured caveats: the hub sees ~1 title event per second per busy terminal, so
-  per-event work must stay cheap; and `✳` also appears briefly at the start of an activity, so if
-  false positives annoy, debounce — badge only if the `✳` title survives ~2 s unchanged.
+- Claude Code done/waiting: **no title rule — ship none.** The user's decision, taken with the
+  61 s latency measured and accepted: a finished Claude Code session badges via the **flash**
+  channel like any other app, about a minute after it goes idle. That keeps this task free of
+  per-app regexes and keeps one mechanism for both Teams and terminals.
+  The Claude Code title is still *parsed and displayed* — see task 07 § F — it just does not
+  raise notifications here.
 - Teams unread: **there is no title rule — task 01 disproved it.** Teams never changes its window
   title, on any event, in any window state (zero name-change events across three test runs with
   real incoming messages from a second account). Do not ship `^\((\d+)\)` for `ms-teams.exe`; the
@@ -104,11 +107,11 @@ suppression; mapping flash hwnd → task; regex timeout safety.
 ## Verification
 
 1. `dotnet test` — totals pasted.
-2. Flash path (the terminal bell does **not** work for this — task 01 could not make Windows
-   Terminal flash on a bell in any configuration). Use an explicit `FlashWindowEx` against a
-   window assigned to a task, once while that window is visible-but-background and once while
-   HydraWin has it hidden: both must badge, since task 01 showed `HSHELL_FLASH` is delivered in
-   both states. No badge if the window is foreground. Record observed.
+2. Flash path. Easiest reliable trigger is a **terminal bell**: with `bellStyle` including
+   `"taskbar"`, `printf '\a'` (or `[Console]::Out.Write([char]7)`) in a Windows Terminal window
+   assigned to a task raises `HSHELL_FLASH`, verified working both visible-but-background and
+   `SW_HIDE`-hidden. An explicit `FlashWindowEx` against the window does the same. Test both
+   states: each must badge, and a foreground window must not. Record observed.
 3. Same terminal in a **hidden** task: run a short Claude Code prompt to completion → its task
    badges via the title rule within ~2 s; tooltip shows the label; clicking the badge switches
    and focuses the terminal; badge clears.
