@@ -9,9 +9,56 @@
         Title="{Binding Title}" Height="600" Width="900"
         MinHeight="300" MinWidth="480">
     <!--
-        Task 03 hangs a temporary ItemsControl of tracked windows here; task 07 replaces the
-        whole body with the task table, unassigned pane and toolbar.
+        Task 03 debug harness. Task 07 replaces this whole body with the task table, unassigned
+        pane and toolbar.
     -->
-    <Grid>
-    </Grid>
+    <DockPanel Margin="8">
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <CheckBox Content="Reconciliation sweep"
+                      IsChecked="{Binding ReconciliationEnabled}"
+                      VerticalAlignment="Center" />
+            <Button Content="Refresh rejections"
+                    Command="{Binding RefreshRejectedCommand}"
+                    Margin="12,0,0,0" Padding="8,2" />
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <TextBlock Text="{Binding Status}" Opacity="0.75" />
+            <TextBlock Text="{Binding RejectionSummary}" Opacity="0.75" />
+        </StackPanel>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Text="Tracked" FontWeight="Bold"
+                           Margin="0,0,0,4" />
+                <!-- Virtualization off so the whole inventory is readable for verification. -->
+                <ListBox ItemsSource="{Binding Windows}"
+                         VirtualizingStackPanel.IsVirtualizing="False">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding ProcessFileName}" Opacity="0.6"
+                                           FontSize="11" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" Text="Rejected (and why)" FontWeight="Bold"
+                           Margin="0,0,0,4" />
+                <ListBox ItemsSource="{Binding Rejected}"
+                         DisplayMemberPath="Display" />
+            </DockPanel>
+        </Grid>
+    </DockPanel>
 </Window>

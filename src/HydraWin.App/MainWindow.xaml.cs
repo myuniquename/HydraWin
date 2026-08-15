@@ -9,9 +9,17 @@ namespace HydraWin.App;
 /// </summary>
 public partial class MainWindow : Window
 {
+    private readonly MainViewModel viewModel;
+
     public MainWindow()
     {
         InitializeComponent();
-        DataContext = new MainViewModel();
+        viewModel = new MainViewModel();
+        DataContext = viewModel;
+
+        // The tracker's WinEvent hooks need a message pump, which the dispatcher thread has once
+        // the window is loaded.
+        Loaded += (_, _) => viewModel.Start();
+        Closed += (_, _) => viewModel.Dispose();
     }
 }
