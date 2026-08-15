@@ -6,6 +6,15 @@ Depends on: task 03 (title-change events), task 06 (task↔window binding, Switc
 hidden windows are observable and provides the literal Claude Code / Teams title strings the
 default rules below must be tuned to.
 
+> **Two measured facts from task 01 that change this task's defaults.** (1) **Teams is
+> flash-only**: it flashes identically whether visible, minimized or `SW_HIDE`-hidden, and it
+> *never* changes its window title — so the title rule below is deleted, not tuned. (2) Teams
+> flashes **once per unread run**: the first message into a read conversation flashes, then
+> nothing until the user opens the chat. Consequence for section C's clearing matrix: a Teams
+> badge must be cleared **only** by the window gaining focus. Clearing flash-kind entries on
+> `SwitchTo`, as currently specified, would drop the badge with no further flash ever coming to
+> re-raise it.
+
 ## Motivation
 
 The point of hiding background tasks is focus — but the user must still learn when a hidden
@@ -16,18 +25,25 @@ awareness.
 ## Background
 
 Architecture recap: `WindowTracker` (task 03) already raises `WindowTitleChanged(old, new)` for
-all tracked windows — **including HydraWin-hidden ones** (WinEvents don't require visibility; task
-01 spike C confirmed/denied — follow its record). `WorkspaceService` maps windows to tasks.
+all tracked windows — **including HydraWin-hidden ones** (WinEvents don't require visibility;
+task 01 confirmed this — name-change events were captured for windows with
+`IsWindowVisible == false`). `WorkspaceService` maps windows to tasks.
 `TaskViewModel` (task 07) reserved `NotificationCount`.
 
 Two signal sources:
 - **Shell flash hook** — `RegisterShellHookWindow(hwnd)` + `msgId =
   RegisterWindowMessage("SHELLHOOK")`; in the window's `HwndSource` hook, messages with
   `wParam == HSHELL_FLASH (0x8006)` (and log-only: `HSHELL_RUDEAPPACTIVATED (0x8004)`) carry the
-  flashing HWND in `lParam`. Catches Teams flashes and terminal bells for windows that have a
-  taskbar button. Per the spike, hidden windows likely do **not** produce this — the title
-  watcher is the guaranteed channel for them.
-- **Title watcher** — rule-driven interpretation of `WindowTitleChanged`.
+  flashing HWND in `lParam`. **Task 01 measured that this works for `SW_HIDE`-hidden windows
+  too** — the message arrives with `IsWindowVisible == false`, so treat it as a full second
+  channel, not a visible-only fallback. Do *not* bother with `HSHELL_RUDEAPPACTIVATED`: it never
+  fired once in 1311 captured shell-hook messages.
+  The limitation is on the *sending* side: a Windows Terminal bell produced no flash at all in
+  task 01, under either `bellStyle` form and whether the BEL came from a Win32 console app or a
+  VT-native one. So the flash hook is expected to carry Teams-style "wants attention", not
+  terminal bells.
+- **Title watcher** — rule-driven interpretation of `WindowTitleChanged`. **This is the primary
+  channel for Claude Code**, since the bell does not flash.
 
 ## Work
 
@@ -41,11 +57,19 @@ matches `TitleRegex` (and, for done-style rules, the old title did not — edge-
 level-triggered, so a persistent "(2) Teams" title badges once, not on every repaint).
 Compiled with `RegexOptions.IgnoreCase`, 100 ms timeout. Ship defaults in `SettingsModel`
 (seeded on first run, user-editable in `state.json`; UI editor is task 10):
-- Claude Code done/waiting: process `WindowsTerminal.exe` (and `wt.exe`), regex placeholder
-  `TUNE-FROM-SPIKE` — replace with patterns derived from task 01's captured titles (expected
-  shapes: an idle/bell marker, disappearance of a busy marker such as `✳`/spinner, or an
-  "esc to interrupt" fragment vanishing). Label "Claude done".
-- Teams unread: process `ms-teams.exe`, regex `^\((\d+)\)` on the title. Label "Teams".
+- Claude Code done/waiting: process `WindowsTerminal.exe` (and `wt.exe`), regex `^✳\s`
+  (`✳`, U+2733). Label "Claude done". Measured in task 01: an interactive Claude Code session
+  titles its terminal `<marker> <session name>`, cycling spinner frames `U+25D0`–`U+25D3`
+  (`◐ ◑ ◒ ◓`) about **once per second** while busy, and settling on `✳` when it finishes or waits
+  for input — after which the title stops changing entirely. Edge-triggering therefore does the
+  right thing. Two measured caveats: the hub sees ~1 title event per second per busy terminal, so
+  per-event work must stay cheap; and `✳` also appears briefly at the start of an activity, so if
+  false positives annoy, debounce — badge only if the `✳` title survives ~2 s unchanged.
+- Teams unread: **there is no title rule — task 01 disproved it.** Teams never changes its window
+  title, on any event, in any window state (zero name-change events across three test runs with
+  real incoming messages from a second account). Do not ship `^\((\d+)\)` for `ms-teams.exe`; the
+  unread count never reaches the window title. Teams is handled entirely by the flash channel,
+  which works for hidden windows — nothing extra is needed to badge a hidden Teams.
 - Browser unread (off by default): `^\(\d+\)` for `msedge.exe`/`chrome.exe`.
 
 ### C. `NotificationHub` (Core)
@@ -80,14 +104,19 @@ suppression; mapping flash hwnd → task; regex timeout safety.
 ## Verification
 
 1. `dotnet test` — totals pasted.
-2. Terminal bell (`bellStyle: taskbarFlash`, `printf '\a'`) in a *visible but background* window
-   assigned to the active task → no badge if foreground, badge if backgrounded behind another
-   window — record observed.
+2. Flash path (the terminal bell does **not** work for this — task 01 could not make Windows
+   Terminal flash on a bell in any configuration). Use an explicit `FlashWindowEx` against a
+   window assigned to a task, once while that window is visible-but-background and once while
+   HydraWin has it hidden: both must badge, since task 01 showed `HSHELL_FLASH` is delivered in
+   both states. No badge if the window is foreground. Record observed.
 3. Same terminal in a **hidden** task: run a short Claude Code prompt to completion → its task
    badges via the title rule within ~2 s; tooltip shows the label; clicking the badge switches
    and focuses the terminal; badge clears.
-4. Teams hidden, send yourself a message → badge with Teams label; switch to the task *without*
-   focusing Teams → unread badge remains; focus Teams → clears.
+4. Teams hidden in a background task, message sent from a **second account** (a self-chat produces
+   nothing — task 01 established that) and with the conversation **read beforehand** (Teams flashes
+   only once per unread run, so a stale unread state silently invalidates this test) → badge with
+   Teams label via the flash; switch to the task *without* focusing Teams → badge remains; focus
+   Teams → clears.
 5. Notepad unassigned, flash it (e.g. via a script calling `FlashWindowEx`) → no badge anywhere.
 6. Soak: leave HydraWin running 30 min of normal work — no badge storms from title-noise (VS Code
    `●` toggles, browser tab switches); if storms occur, tighten the offending default rule and

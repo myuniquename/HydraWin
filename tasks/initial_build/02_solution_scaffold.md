@@ -10,7 +10,7 @@ once keeps the per-task diffs about behaviour, not plumbing.
 
 ## Background
 
-HydraWin is a C# / .NET 8 WPF tray-style utility. Architecture (restated so this file stands alone):
+HydraWin is a C# / .NET 10 WPF tray-style utility. Architecture (restated so this file stands alone):
 
 ```
 ┌──────────────────────  HydraWin.App (WPF, MVVM)  ─────────────────────────┐
@@ -28,8 +28,8 @@ Core is UI-free (no WPF references) so its logic is unit-testable; App reference
 ## Work
 
 ### A. Solution and projects
-- `HydraWin.sln` at root; `src/HydraWin.Core` (`net8.0-windows`, class library), `src/HydraWin.App`
-  (`net8.0-windows`, WPF exe, `<UseWPF>true</UseWPF>`, assembly/exe name `hydrawin`),
+- `HydraWin.sln` at root; `src/HydraWin.Core` (`net10.0-windows`, class library), `src/HydraWin.App`
+  (`net10.0-windows`, WPF exe, `<UseWPF>true</UseWPF>`, assembly/exe name `hydrawin`),
   `tests/HydraWin.Core.Tests` (xUnit, references Core).
 - `Directory.Build.props` at root: `<Nullable>enable</Nullable>`,
   `<TreatWarningsAsErrors>true</TreatWarningsAsErrors>`, `<ImplicitUsings>enable</ImplicitUsings>`,

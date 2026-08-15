@@ -56,10 +56,17 @@ source of truth: the journal's snapshot.
 - Switching to the already-active task → only re-asserts visibility/focus (idempotent).
 - A `toShow` assignment whose window died while hidden → drop the binding (rule remains for
   re-attach), count as stale in the summary.
-- A `toHide` window that refuses `SW_HIDE` (returns success but stays visible — some packaged
-  apps; see task 01 findings) → remove its journal entry, leave it visible, mark the assignment
-  `Unmanageable` so the UI (task 10) can annotate it. Never leave a journal entry for a window
-  that is not actually hidden.
+- A `toHide` window that refuses `SW_HIDE` → remove its journal entry, leave it visible, mark the
+  assignment `Unmanageable` so the UI (task 10) can annotate it. Never leave a journal entry for a
+  window that is not actually hidden.
+  Task 01 measured the real signature, and it is *not* packaged apps — Teams hides cleanly. It is
+  **elevated windows** (UIPI): `ShowWindow` returns `FALSE` with `GetLastError() == 5`
+  (`ERROR_ACCESS_DENIED`) and the window stays visible; `SetWindowPlacement` fails the same way.
+  Detect the refusal with `IsWindowVisible(hwnd)` *after* the call — never with `ShowWindow`'s
+  return value, which is the window's **previous visibility**, not success (a successful hide of a
+  visible window returns `TRUE`). Elevation can also be predicted before trying:
+  `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` succeeds against elevated processes and is
+  useless as a test, but `OpenProcessToken` + `GetTokenInformation(TokenElevation)` works.
 - Deleting a task (task 04's `DeleteTask`) with hidden windows → `ShowAll` those windows first,
   then unassign. Deletion never closes windows.
 

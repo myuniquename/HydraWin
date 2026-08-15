@@ -1,6 +1,6 @@
 # HydraWin
 
-HydraWin is a task workspace manager for Windows 11, written in C# / .NET 8 + WPF. The user works on
+HydraWin is a task workspace manager for Windows 11, written in C# / .NET 10 + WPF. The user works on
 several tasks at once, each task being a group of windows (browser, Claude Code terminals,
 VS Code, optionally MS Teams). HydraWin shows a table of tasks, lets the user drag live windows onto
 tasks, and switches tasks by **fully hiding** every other task's windows (documented Win32
@@ -33,7 +33,7 @@ placements. Background windows that want attention raise a badge on their task r
 
 ## Style
 
-- `net8.0-windows`, `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</...>`,
+- `net10.0-windows`, `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</...>`,
   `.editorconfig` at root, `dotnet format` clean before any completion report.
 - Respect `.editorconfig` for every file it covers, including `*.md` — it sets 2-space indents,
   a 100-column guideline, and disables trailing-whitespace trimming (Markdown uses a trailing

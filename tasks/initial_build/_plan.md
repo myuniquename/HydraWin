@@ -34,19 +34,28 @@ undoing the core. If the flash-hook half of 09 is a dead end, the title-watcher 
 - **Minimize-only instead of hide: REJECTED.** Minimized windows stay on the taskbar and in
   Alt-Tab, defeating the isolation purpose. Full hide chosen, made safe by the write-ahead
   journal + `--restore-all` + startup recovery.
-- **Stack: C# / .NET 8 + WPF. Chosen** for first-class P/Invoke, WinEvent/shell hooks, mature
+- **Stack: C# / .NET 10 + WPF. Chosen** for first-class P/Invoke, WinEvent/shell hooks, mature
   in-app drag-and-drop, and tray support, packaged as one self-contained exe. WinUI 3 rejected
   (packaging/runtime friction for a tray-style utility), Tauri/Rust and Electron rejected (all
   window-management guts would be hand-written interop anyway; Electron adds the heaviest
   footprint).
 - **Notifications: shell flash hook + title-change watcher.** `HSHELL_FLASH` via
-  `RegisterShellHookWindow` catches "app wants attention" generically (Teams flash, terminal
-  bell). Suspected limitation, to be settled by task 01: a window hidden with `SW_HIDE` has no
-  taskbar button, so flashes from hidden windows may be unobservable — the title watcher
-  (`EVENT_OBJECT_NAMECHANGE`, fires regardless of visibility) is the guaranteed channel for
-  hidden windows, and is also what recognises Claude Code done/waiting states and Teams `(N)`
-  unread titles. UI Automation badge reading rejected for v1 (brittle against Teams UI updates,
-  CPU-heavier).
+  `RegisterShellHookWindow` catches "app wants attention" generically. **Task 01 settled the open
+  question: flashes from `SW_HIDE`-hidden windows *are* delivered** — the message arrives with
+  `IsWindowVisible == false`, confirmed both by a controlled `FlashWindowEx` A/B on one window and
+  by an unrelated third-party app flashing while hidden. The earlier suspicion that a missing
+  taskbar button would suppress them was wrong. `HSHELL_RUDEAPPACTIVATED` never fired at all and
+  is not used. What the spike *did* disprove is the terminal-bell path: a Windows Terminal bell
+  produced no flash in any configuration tried, so **Claude Code done/waiting detection rests on
+  the title watcher** (`EVENT_OBJECT_NAMECHANGE`, which also fires regardless of visibility).
+  UI Automation badge reading rejected for v1 (brittle against Teams UI updates, CPU-heavier).
+- **Teams, measured (task 01).** With real messages from a second account: Teams flashes
+  identically whether its window is visible, minimized, or `SW_HIDE`-hidden, so the headline
+  promise ("a hidden Teams chat gets a message → badge") holds with a plain hide and needs no
+  per-app policy. Teams **never changes its window title** in any state, so it is a flash-only app
+  and the assumed `^\((\d+)\)` title rule is deleted. It flashes **once per unread run** — the
+  first message into a read conversation, then silence until the user reads it — which means a
+  Teams badge must only ever be cleared by focusing the window, never by a task switch.
 
 ## Task index
 
@@ -89,7 +98,7 @@ undoing the core. If the flash-hook half of 09 is a dead end, the title-watcher 
   the user has not assigned to a task (unassigned windows stay visible in every task).
 - **Version control is the user's job.** No `git init`, no Perforce write commands. Every
   completion note lists new / modified / deleted files.
-- `net8.0-windows`, nullable enabled, warnings as errors, `dotnet format` clean.
+- `net10.0-windows`, nullable enabled, warnings as errors, `dotnet format` clean.
 
 ## Working rules
 

@@ -1,6 +1,8 @@
 # Task 01 — Spike: verify the risky Win32 assumptions
 
-Status: **not started**
+Status: **done** (2026-08-15) — all three questions answered with observed evidence. The headline
+correction to the plan: flashes **do** reach `SW_HIDE`-hidden windows, including real Teams
+message notifications, so the notification design works as intended. See *Consequences* below.
 Depends on: nothing.
 
 ## Motivation
@@ -82,5 +84,319 @@ path).
 
 ## Record on completion
 
-*(to be filled by the implementer — answers to Q1/Q2/Q3 with pasted evidence, per-app quirks,
-plan corrections made, and the list of new / modified / deleted files)*
+Run on 2026-08-15, Windows 11 Pro 10.0.26200, two monitors (`\\.\DISPLAY74` primary at
+`0,0 3072x1728`; `\\.\DISPLAY73` at `-2048,0 2048x2304` — negative X, which is what makes it a
+real placement test). Windows Terminal 1.24.11911, packaged `MSTeams` 26198, Chrome, VS Code.
+Raw logs: `tasks/initial_build/reference/` (`flashprobe.log` 1311 events, `titlewatch.log` 135
+events, `hideshow-baseline-hidden.txt`, `hideshow-final-hidden.txt`).
+
+**Deviation from the task as written:** the target framework is `net10.0-windows`, not
+`net8.0-windows`. Only .NET 10 SDKs are installed on this machine and the user chose to move the
+whole project to .NET 10; `CLAUDE.md`, `_plan.md` and `02_solution_scaffold.md` were updated in
+the same change.
+
+### Q1 — Does `HSHELL_FLASH` (0x8006) arrive for a window hidden with `SW_HIDE`?
+
+**YES.** The plan's suspicion was wrong, and `_plan.md` has been corrected.
+
+Controlled A/B on one window (Windows Terminal `0x002813D0`), identical
+`FlashWindowEx(FLASHW_ALL | FLASHW_TIMERNOFG, uCount = 6)` in both states — 7 flash messages
+each, the only difference being `vis=`:
+
+```
+19:12:53.058 | 0x8006 | HSHELL_FLASH | 0x002813D0 | vis=Y | WindowsTerminal | "HYDRAWIN-BELL"
+19:12:54.114 | 0x8006 | HSHELL_FLASH | 0x002813D0 | vis=Y | WindowsTerminal | "HYDRAWIN-BELL"
+…                                                          (7 total, visible)
+19:13:14.376 | 0x8006 | HSHELL_FLASH | 0x002813D0 | vis=n | WindowsTerminal | "HYDRAWIN-BELL"
+19:13:15.427 | 0x8006 | HSHELL_FLASH | 0x002813D0 | vis=n | WindowsTerminal | "HYDRAWIN-BELL"
+…                                                          (7 total, SW_HIDE-hidden)
+```
+
+Independent, unsolicited confirmation from a third-party app nobody touched — a hidden `msrdc`
+"RemoteApp" window flashed 447 times during the session, every one of them with `vis=n`:
+
+```
+19:24:42.041 | 0x8006 | HSHELL_FLASH | 0x000114F2 | vis=n | msrdc | "RemoteApp"
+```
+
+Of 472 `HSHELL_FLASH` messages captured, 454 were for windows that were not visible.
+
+`HSHELL_RUDEAPPACTIVATED` (0x8004): **zero occurrences** in 1311 shell-hook messages, across
+window creation, activation, hiding, showing and flashing. It is not a useful signal here.
+
+**Caveat that matters more than the answer.** Delivery works; what is not guaranteed is that the
+*app* calls `FlashWindowEx` while it is hidden. Specifically, **a Windows Terminal bell never
+produced a flash** in this environment. With `"bellStyle": "taskbarFlash"` in `profiles.defaults`
+(and again with the array form `["audible", "window", "taskbarFlash"]`), a BEL emitted from
+inside the session produced no `0x8006` in any of three attempts:
+
+- `[Console]::Out.Write([char]7)` from PowerShell, window minimized — 15 bells, nothing.
+- `cmd /c type` of a file containing a single `0x07` byte, window visible-but-background —
+  30 bells, nothing.
+- `printf '\a'` from a VT-native WSL app, window visible-but-background — 30 bells, nothing.
+  The same WSL process's `printf '\033]0;…\007'` **did** retitle the window
+  (`19:16:53.671 … "HYDRAWIN-WSLBELL"`), so raw VT was reaching Windows Terminal.
+
+Windows Terminal *can* flash — a WT window emitted three genuine `0x8006` at startup
+(`19:10:23.087`, `19:10:24.157`, `19:10:25.208`) while visible-but-background. The bell path
+specifically is what did not fire. **Consequence: do not build Claude Code notification on the
+terminal bell.** The title watcher is the channel for terminals (see Q3).
+
+### Q2 — Does hide → show round-trip cleanly for the real target apps?
+
+**YES for every non-elevated app tested, with exact placement restore.** Restore is
+`SW_SHOW` followed by `SetWindowPlacement(saved)`; that pair was pixel-exact every time.
+
+| Target | Result |
+| --- | --- |
+| Windows Terminal, normal, primary monitor | exact |
+| Windows Terminal, **maximized** | `SW_SHOWMAXIMIZED(3)` → `SW_SHOWMAXIMIZED(3)`, `rcNormalPosition` MATCH, on-screen rect `(-7,-7)-(3078,1686)` identical, `zoomed=True` after |
+| Windows Terminal on `\\.\DISPLAY73` (negative X) | `normal=(-1600,500)-(-913,1000)` MATCH, monitor MATCH |
+| Chrome, 1 of 3 windows in pid 17572 | hidden alone; the other two stayed visible; process `Responding=True` throughout; restore exact |
+| VS Code, 1 of 2 windows in pid 3304 | hidden alone; sibling untouched; `Responding=True`; restore exact |
+| **Teams** (packaged `MSTeams`, class `TeamsWebView`) | **hides cleanly — it does not refuse.** 170 s hidden, `IsWindowVisible == false`, restore exact. Re-confirmed in the second run on **both** Teams windows simultaneously (240 s and 210 s): `showCmd MATCH, rcNormalPosition MATCH` for each |
+| Task Manager (elevated) | **refused**, see below |
+
+Maximized round-trip, verbatim:
+
+```
+before   showCmd=SW_SHOWMAXIMIZED(3) flags=0x2 min=(-25600,-25600) max=(-1,-1) normal=(141,147)-(1327,765) 1186x618
+before   rect=(-7,-7)-(3078,1686) 3085x1693 monitor=\\.\DISPLAY74 visible=True zoomed=True iconic=False
+hide     ShowWindow(SW_HIDE) returned True (previous visibility), win32=0
+hide     confirmed: IsWindowVisible == false
+after    showCmd=SW_SHOWMAXIMIZED(3) flags=0x2 min=(-1,-1) max=(-1,-1) normal=(141,147)-(1327,765) 1186x618
+after    rect=(-7,-7)-(3078,1686) 3085x1693 monitor=\\.\DISPLAY74 visible=True zoomed=True
+VERDICT  showCmd MATCH (SW_SHOWMAXIMIZED(3) -> SW_SHOWMAXIMIZED(3)), rcNormalPosition MATCH
+```
+
+Teams, verbatim (this is the result task 06 was most worried about):
+
+```
+target   0x004911C0 "Anton Suchov (You) | Microsoft Teams" [ms-teams pid=12184]
+hide     ShowWindow(SW_HIDE) returned True (previous visibility), win32=0
+hide     confirmed: IsWindowVisible == false
+waiting  170s while hidden…
+VERDICT  showCmd MATCH (SW_SHOWNORMAL(1) -> SW_SHOWNORMAL(1)), rcNormalPosition MATCH
+```
+
+**The elevated-window signature** (this is the real "Unmanageable" trigger, not packaged apps):
+
+```
+target   0x001205A0 "Task Manager" [Taskmgr pid=3088, ELEVATED]
+hide     ShowWindow(SW_HIDE) returned False (previous visibility), win32=5
+hide     *** REFUSED: window is still visible ***
+  0x1205A0 "Task Manager" -> visible=True setPlacement=False
+```
+
+UIPI makes both `ShowWindow` and `SetWindowPlacement` return `FALSE` with
+`GetLastError() == 5` (`ERROR_ACCESS_DENIED`), and the window stays visible. Two API notes for
+whoever implements task 06:
+
+- **`ShowWindow`'s return value is the window's *previous* visibility, not success.** A
+  successful `SW_HIDE` on a visible window returns `TRUE`; the refused call returned `FALSE`
+  only because the window was never hidden. `IsWindowVisible(hwnd)` after the call is the
+  authority — always check it.
+- Elevation is detectable up front: `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` **succeeds**
+  against an elevated process from a normal one, so it is not a usable test. `OpenProcessToken` +
+  `GetTokenInformation(TokenElevation)` is (`Native.LooksElevated` in the spike).
+
+### Q3 — Does `EVENT_OBJECT_NAMECHANGE` fire for hidden windows, and what are the titles?
+
+**Fires regardless of visibility** — 11 of 135 captured name-change events carried `vis=n`.
+
+**Claude Code in Windows Terminal** (window `0x00060C58`) — literal titles, non-ASCII escaped:
+
+```
+19:14:24.867 | vis=Y | WindowsTerminal | "\u2733 Initialize git repository with initial commit"
+19:14:45.818 | vis=Y | WindowsTerminal | "\u25D0 verify-win32-assumptions"
+19:20:19.129 | vis=Y | WindowsTerminal | "\u2733 verify-win32-assumptions"
+        ← no events at all for 8m28s: this is the idle / waiting-for-input state
+19:28:47.726 | vis=Y | WindowsTerminal | "\u25D0 verify-win32-assumptions"
+19:28:48.687 | vis=Y | WindowsTerminal | "\u25D1 verify-win32-assumptions"
+19:28:49.647 | vis=Y | WindowsTerminal | "\u25D0 verify-win32-assumptions"
+        ← alternating every ~0.96 s for as long as the session is working
+```
+
+The shape is `<marker> <session or activity name>`:
+
+- **Busy:** a rotating spinner frame, `U+25D0 ◐` / `U+25D1 ◑` (the `U+25D0`–`U+25D3` family),
+  changing about **once per second**.
+- **Idle / waiting for input:** `U+2733 ✳`, after which **the title stops changing**. The 8m28s
+  gap above is exactly the period the session sat waiting for the user.
+
+So the done/waiting rule is the arrival of a `^\u2733 ` title (edge-triggered), which is
+equivalent to "the spinner stopped". Two things task 09 must budget for:
+
+- ~1 name-change event per second per busy terminal. Harmless for an edge-triggered rule, but
+  the hub must not do expensive work per event.
+- `✳` also appears mid-session at the start of an activity (`19:14:24.867` above), so a rule
+  keyed on `✳` alone will occasionally fire early. If false positives prove annoying, add a
+  short debounce — badge only if the `✳` title survives ~2 s unchanged.
+
+`claude -p` (non-interactive) sets **no** Claude-style title; only the interactive session does.
+
+**Teams — verified properly on the third attempt.** Attempt 1 used a self-chat and produced
+nothing at all. The user suspected — correctly — that a message from *another* account behaves
+differently, created a second Teams account, and sent real messages. Attempts 2 and 3 then
+uncovered a confound that initially produced two false negatives; the final, controlled results
+are below. Logs: `reference/flashprobe-teams.log`, `reference/titlewatch-teams.log`,
+`reference/flashprobe-teams-min.log`, `reference/titlewatch-teams-min.log`.
+
+**The confound, because it will trap the next person too: Teams flashes once per *unread run*.**
+It raises `FlashWindowEx` when a conversation goes from read to unread, and then stays silent for
+every further message until the user actually opens and reads the chat. Any experiment that sends
+a second message without reading the first records a false negative — which is exactly what
+happened twice here, once for hidden and once for minimized. **Every result below was taken with
+the conversation read (unread cleared) immediately beforehand.**
+
+**Teams never changes its window title.** Not when visible, not when hidden, not on an incoming
+message. Across the whole run the title-change watcher captured **zero** events for `ms-teams`.
+The titles are steady-state and reflect the selected chat, with no unread count anywhere:
+
+```
+"anton suchov | Microsoft Teams"          (main window, TeamsWebView)
+"Chat | anton suchov | Microsoft Teams"   (chat window, TeamsWebView)
+```
+
+**Teams flashes on an incoming message in all three window states**, always three flashes on the
+*Chat* window `0x001111C2`, always the same 1.06 s cadence. The only thing that changes is `vis=`:
+
+```
+visible, background (20:02:53–55, unread cleared first)
+20:02:53.068 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=Y | ms-teams | "Chat | anton suchov | Microsoft Teams"
+20:02:54.133 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=Y | ms-teams | "Chat | anton suchov | Microsoft Teams"
+20:02:55.198 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=Y | ms-teams | "Chat | anton suchov | Microsoft Teams"
+
+minimized, SW_SHOWMINIMIZED (20:05:18–20, unread cleared first)
+20:05:18.773 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=Y | ms-teams | "Chat | anton suchov | Microsoft Teams"
+20:05:19.832 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=Y | ms-teams | "Chat | anton suchov | Microsoft Teams"
+20:05:20.902 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=Y | ms-teams | "Chat | anton suchov | Microsoft Teams"
+
+HIDDEN with SW_HIDE (20:07:38–40, unread cleared first) — the decisive one
+20:07:19.481 | 0x0002 | HSHELL_WINDOWDESTROYED | 0x0C411144 | vis=n | ms-teams | "anton suchov | Microsoft Teams"
+20:07:22.500 | 0x0002 | HSHELL_WINDOWDESTROYED | 0x001111C2 | vis=n | ms-teams | "Chat | anton suchov | Microsoft Teams"
+20:07:38.104 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=n | ms-teams | "Chat | anton suchov | Microsoft Teams"
+20:07:39.162 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=n | ms-teams | "Chat | anton suchov | Microsoft Teams"
+20:07:40.231 | 0x8006 | HSHELL_FLASH | 0x001111C2 | vis=n | ms-teams | "Chat | anton suchov | Microsoft Teams"
+```
+
+**So a `SW_HIDE`-hidden Teams window notifies exactly as well as a visible one.** No special
+handling is needed, no pinning, no minimize-instead-of-hide. Teams also keeps running and
+receiving normally while hidden — the user confirmed every message sent during a hidden phase was
+present in the conversation once the windows were restored.
+
+Two corrections I had to make to my own earlier write-up, recorded because the reasoning matters:
+an initial "hidden Teams is silent" conclusion, and then a "minimized Teams is silent" one, were
+both artifacts of the unread-run behaviour above. The tell was that a control run — visible,
+unread cleared — reproduced the flash, which meant the variable under test was not what I thought.
+Re-running each case with unread cleared reversed both results.
+
+The one genuine negative stands: **Teams never changes its window title.** Zero `ms-teams`
+name-change events were captured across every run, in every window state, including the messages
+that did flash. Titles are steady-state and reflect the selected chat:
+
+```
+"anton suchov | Microsoft Teams"          (main window, TeamsWebView)
+"Chat | anton suchov | Microsoft Teams"   (chat window, TeamsWebView)
+```
+
+Task 09's assumed rule `^\((\d+)\)` for `ms-teams.exe` is therefore **wrong and should be
+deleted**, not tuned — the unread count never reaches the window title. Teams is a flash-only app.
+
+### Extra finding (not asked for, but it will bite someone)
+
+**The shell hook reports `SW_HIDE` as `HSHELL_WINDOWDESTROYED` and `SW_SHOW` as
+`HSHELL_WINDOWCREATED`, reusing the same HWND.** Chrome window `0x0002147A`:
+
+```
+19:15:37.999 | 0x0002 | HSHELL_WINDOWDESTROYED | 0x0002147A | vis=n | chrome | "…CHROME-A…"   ← our SW_HIDE
+19:16:02.970 | 0x0001 | HSHELL_WINDOWCREATED   | 0x0002147A | vis=Y | chrome | "…CHROME-A…"   ← our SW_SHOW
+19:24:28.817 | 0x0002 | HSHELL_WINDOWDESTROYED | 0x0002147A | vis=n | chrome | "…CHROME-A…"   ← a real close
+```
+
+A hide and a genuine close are indistinguishable in the shell hook; `IsWindow(hwnd)` is the
+discriminator. Task 03 is unaffected because it uses WinEvents plus an explicit hidden set, but
+anything that later consumes the shell hook must not treat `WINDOWDESTROYED` as "gone".
+
+### Design consequence: the plan's core promise holds
+
+The plan's headline scenario — *a hidden Teams chat gets a message, its task badges* — works as
+designed, through the flash hook. No per-app backgrounding policy, pinning, or
+minimize-instead-of-hide is needed. What task 09 must account for instead is Teams' **one flash
+per unread run**: the first message into a read conversation flashes, subsequent ones are silent
+until the user reads it. That suits badging well (the badge is already up), but it means the badge
+must **not** be cleared by anything other than the user actually focusing the window — clear it on
+a switch and no further flash will ever re-raise it. Task 09's existing rule that `SwitchTo` clears
+only flash-kind entries is therefore wrong for Teams and should be revisited.
+
+Whatever is chosen, `06_switch_engine.md` and `10_hardening_polish.md` need a per-app
+"how to background this window" policy rather than a single global hide.
+
+### Bug found in the spike itself (relevant to task 05)
+
+Two `hideshow` processes hiding two windows at the same instant collided on the journal file: the
+second one blocked/failed inside `Journal.Append` (`FileMode.Append` with `FileShare.Read`) and
+never hid its window. Harmless in the spike — it fails *before* hiding, so the safe direction —
+but **task 05 must handle concurrent journal writers deliberately**, because
+`hydrawin.exe --restore-all` can legitimately run while the UI process is live. Either
+single-writer-by-design with a named mutex, or a share mode that permits it, plus a defined
+reader behaviour for a partially-written line.
+
+### Consequences and plan corrections made
+
+- `_plan.md` § *Investigation results* — the notifications bullet claimed flashes from hidden
+  windows "may be unobservable". Corrected to the measured result.
+- `09_notifications.md` — the flash hook is documented as working for hidden windows; the
+  `TUNE-FROM-SPIKE` placeholder is replaced with the measured Claude Code regex; the terminal-bell
+  verification step is rewritten (it cannot pass as written); the Teams title rule is deleted as
+  disproved and replaced by the flash-only reality plus the hidden-Teams gap.
+  **Answer to the question the task poses — "should task 09 treat the title watcher as primary?"
+  — is: per app, not globally.** The two channels turn out to be disjoint rather than
+  primary/fallback. Claude Code is title-only (its bell never flashes); Teams is flash-only (its
+  title never changes). Both channels work for `SW_HIDE`-hidden windows, so hiding costs no
+  awareness for either app. Implement both, and do not think of the flash hook as a
+  visible-window fallback.
+- `06_switch_engine.md` — the "refuses `SW_HIDE`" branch is kept, but its description was wrong on
+  two counts: packaged Teams does **not** refuse, and the failure does not "return success but stay
+  visible". Corrected to the measured elevated-window signature.
+
+### Verification
+
+- All three spikes build with `TreatWarningsAsErrors`: 0 warnings, 0 errors.
+  `dotnet format --verify-no-changes`: exit 0 for all three.
+- **Crash-recovery drill passed before any real target was touched:** a window was hidden, the
+  spike killed with `TerminateProcess` (no handler could run), the window confirmed still hidden
+  with the journal entry intact on disk, and `hideshow rescue` restored it — after which the
+  journal was 0 bytes. The watchdog path was also exercised twice (90 s and 25 s caps fired and
+  restored).
+- **No window left hidden.** `hideshow list --hidden` before vs after differ by exactly three
+  entries, all of them the spikes' own windows (`HydraWinFlashProbeHost` and the two hidden
+  console windows). `hideshow rescue` reports the journal empty.
+- Windows Terminal `settings.json` restored from its backup; SHA-256 matches the pre-run file and
+  `bellStyle` is absent again.
+
+### Files
+
+New:
+
+- `spikes/.gitignore`, `spikes/README.md`
+- `spikes/HideShow/HideShow.csproj`, `Program.cs`, `Native.cs`, `Journal.cs`
+- `spikes/FlashProbe/FlashProbe.csproj`, `Program.cs`, `Native.cs`
+- `spikes/TitleWatch/TitleWatch.csproj`, `Program.cs`, `Native.cs`
+- `tasks/initial_build/reference/flashprobe.log`, `titlewatch.log` (main run),
+  `flashprobe-teams.log`, `titlewatch-teams.log` (Teams run 2),
+  `flashprobe-teams-min.log`, `titlewatch-teams-min.log` (Teams run 3: minimize, control, and the
+  controlled hidden re-test), `hideshow-baseline-hidden.txt`, `hideshow-final-hidden.txt`
+
+Modified:
+
+- `tasks/initial_build/01_spike_win32_assumptions.md` (this record)
+- `tasks/initial_build/_plan.md` (Q1 correction, .NET 10)
+- `tasks/initial_build/06_switch_engine.md` (refuses-hide signature)
+- `tasks/initial_build/09_notifications.md` (flash/hidden, Claude Code regex, verification steps)
+- `tasks/initial_build/02_solution_scaffold.md` (.NET 10)
+- `CLAUDE.md` (.NET 10)
+
+Deleted: none.
+
+Untracked build output (`spikes/*/bin`, `spikes/*/obj`) is covered by `spikes/.gitignore`.
