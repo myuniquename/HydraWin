@@ -27,9 +27,13 @@ placements. Background windows that want attention raise a badge on their task r
   paths where the user didn't just click HydraWin.
 - **Elevated processes' windows cannot be hidden from a non-elevated HydraWin** (UIPI). They are
   detected, marked in the UI, and skipped — never half-handled.
-- **Hidden windows have no taskbar button**, so taskbar-flash signals may not fire for them.
-  Notification coverage for hidden windows comes from the title-change watcher. Task 01's spike
-  results record which signal fires when; trust the recorded results, not assumptions.
+- **Both notification channels reach hidden windows** — task 01 measured this, contradicting the
+  original assumption that a missing taskbar button would suppress flashes. `HSHELL_FLASH` is
+  delivered for `SW_HIDE`-hidden windows (confirmed for real Teams messages), and
+  `EVENT_OBJECT_NAMECHANGE` fires regardless of visibility. The two channels are **disjoint, not
+  primary/fallback**: Claude Code is title-only (its terminal bell never flashes), Teams is
+  flash-only (it never changes its window title). Teams also flashes only once per unread run, so
+  its badge must be cleared by focus alone. Trust task 01's recorded results, not assumptions.
 
 ## Style
 

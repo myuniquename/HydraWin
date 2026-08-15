@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>HydraWin.Core</RootNamespace>
+    <!--
+      Required by [LibraryImport] source-generated marshalling, which every Interop/ file uses.
+      Scoped to Core: it is the only project allowed to declare P/Invoke.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!--
+    Core is UI-free on purpose: no WPF reference, so its logic stays unit-testable.
+    It also takes no NuGet dependencies - System.Text.Json is in-box.
+  -->
+
+</Project>

@@ -1,6 +1,6 @@
 # Task 02 — Solution scaffold
 
-Status: **not started**
+Status: **done** (2026-08-15)
 Depends on: nothing (01 informs later tasks, not this one).
 
 ## Motivation
@@ -66,5 +66,99 @@ Core is UI-free (no WPF references) so its logic is unit-testable; App reference
 
 ## Record on completion
 
-*(what was done, deviations and why, package versions pinned, publish size, and the list of
-new / modified / deleted files)*
+Built the solution, the three projects, the shared build settings and the placeholder skeleton.
+Everything in *Verification* above was run and passed; the numbers are below.
+
+### Deviations, and why
+
+- **xunit v3, not v2 — and no `Microsoft.NET.Test.Sdk` / `xunit.runner.visualstudio`.** The user
+  chose the v3 line. That forced a second, non-optional change: the .NET 10 SDK **no longer runs
+  Microsoft.Testing.Platform projects through VSTest**, so `dotnet test` failed outright with
+  *"Testing with VSTest target is no longer supported … on .NET 10 SDK and later"*. The fix is
+  `global.json` at the root:
+
+  ```json
+  { "test": { "runner": "Microsoft.Testing.Platform" } }
+  ```
+
+  With that, the test project needs only `xunit.v3` (it self-hosts the runner as an `Exe`), and
+  the two VSTest packages are dropped. **The invocation changes to
+  `dotnet test --solution HydraWin.sln`** — a bare `dotnet test HydraWin.sln` is now interpreted
+  differently. `_plan.md` § *Working rules* has been updated to match.
+- **`global.json` added**, which the task did not call for. It carries only the `test` section
+  above; no SDK version is pinned, so the newest installed SDK is still used.
+- **`Interop/ConsoleAttach.cs` added** beyond the empty `NativeMethods.cs` the task specifies.
+  `hydrawin.exe` is a `WinExe` and has no console, so without `AttachConsole(ATTACH_PARENT_PROCESS)`
+  the `--restore-all` line goes nowhere and neither this task's verification nor task 05's real
+  implementation could print anything. Per CLAUDE.md the P/Invoke belongs in Core, and keeping it
+  in its own file leaves `NativeMethods.cs` literally empty as the task asks.
+- **`<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` on Core only.** `[LibraryImport]`
+  source-generated marshalling requires it (`SYSLIB1062`). Enabling it once in the one project
+  allowed to declare P/Invoke lets every later task use the modern generator instead of
+  `DllImport`.
+- **`Interop/IWindowApi.cs` added** as an empty seam interface. Task 05 needs "fakes of the Win32
+  layer" and task 06 must assert call order in a "scripted fake interop layer" to prove the
+  journal-before-hide invariant; neither works if callers bind to static P/Invoke. Establishing
+  the seam now avoids a refactor at task 05.
+- **`HydraWin.sln`, not `.slnx`.** `dotnet new sln` on the .NET 10 SDK defaults to the new XML
+  format; `--format sln` was used because `_plan.md` specifies `HydraWin.sln`.
+- **`spikes/.gitignore` deleted**, superseded by the root `.gitignore`.
+
+### Also done here: a task 01 correction
+
+`CLAUDE.md` § *Gotchas* still claimed that hidden windows may not produce taskbar-flash signals and
+that "notification coverage for hidden windows comes from the title-change watcher". Task 01
+measured the opposite; `_plan.md` and `09_notifications.md` were corrected then, but `CLAUDE.md`
+was missed — leaving a false statement in the file loaded into every session. Rewritten to the
+measured result.
+
+### Package versions pinned
+
+| Package | Version | Where |
+| --- | --- | --- |
+| `CommunityToolkit.Mvvm` | 8.4.2 | App |
+| `Hardcodet.NotifyIcon.Wpf` | 2.0.1 | App (unused until task 08) |
+| `xunit.v3` | 4.0.0 | Tests |
+
+Core takes no packages. `Hardcodet.NotifyIcon.Wpf` targets `net8.0-windows7.0`; a
+`net10.0-windows` project consumes it without complaint.
+
+### Verification results
+
+- `dotnet build HydraWin.sln` → **Build succeeded, 0 Warning(s), 0 Error(s)** (warnings are errors).
+- `dotnet test --solution HydraWin.sln` → **total: 1, failed: 0, succeeded: 1, skipped: 0**.
+- App launch → a 900×600 window titled `HydraWin` appears; `CloseMainWindow()` exits with code 0.
+  Confirmed via the task 01 spike: `0x000412B0 pid=20124 hydrawin vis=Y SW_SHOWNORMAL(1)
+  (245,245)-(1145,845) 900x600 "HydraWin"`.
+- `dotnet publish src/HydraWin.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true`
+  → **`hydrawin.exe` is 157.3 MB**. WPF's native components cannot be bundled and sit beside it:
+  `D3DCompiler_47_cor3.dll` (4.5 MB), `wpfgfx_cor3.dll` (1.9 MB), `PresentationNative_cor3.dll`
+  (1.2 MB), `PenImc_cor3.dll`, `vcruntime140_cor3.dll` — so "one self-contained exe" is really
+  six files. Worth knowing before task 11 describes distribution.
+- Published `hydrawin.exe --restore-all` → stdout `restore-all: not implemented yet`, **exit code 0**,
+  nothing on stderr.
+- `dotnet format --verify-no-changes` → exit 0.
+- **The task 01 spikes still build**: all three at 0 warnings / 0 errors under the new root
+  `Directory.Build.props`, so the `hideshow rescue` panic tool is intact.
+
+### Files
+
+New:
+
+- `HydraWin.sln`, `Directory.Build.props`, `global.json`, `.gitignore`
+- `src/HydraWin.Core/HydraWin.Core.csproj` and placeholders: `Interop/NativeMethods.cs`,
+  `Interop/IWindowApi.cs`, `Interop/ConsoleAttach.cs`, `Tracking/TrackedWindow.cs`,
+  `Workspaces/WorkspaceState.cs`, `Persistence/JsonStore.cs`, `Recovery/JournalEntry.cs`,
+  `Notifications/NotificationRule.cs`
+- `src/HydraWin.App/HydraWin.App.csproj`, `App.xaml`, `App.xaml.cs`, `MainWindow.xaml`,
+  `MainWindow.xaml.cs`, `AssemblyInfo.cs` (the WPF template's `ThemeInfo` attribute, kept as-is),
+  `ViewModels/MainViewModel.cs`
+- `tests/HydraWin.Core.Tests/HydraWin.Core.Tests.csproj`, `ScaffoldTests.cs`
+
+Modified: `CLAUDE.md` (stale gotcha), `tasks/initial_build/_plan.md` (test invocation),
+`tasks/initial_build/02_solution_scaffold.md` (this record).
+
+Deleted: `spikes/.gitignore`.
+
+Each placeholder's XML comment names the task that fills it and carries the constraints that task
+must honour, so nobody has to re-read task 01 to avoid the traps it found.

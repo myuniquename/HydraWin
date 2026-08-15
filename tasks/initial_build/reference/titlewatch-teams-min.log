@@ -1,0 +1,4 @@
+﻿=== titlewatch start 2026-08-15T19:58:28.7098534+02:00 (filter: teams) (incl. hidden windows) ===
+cols: time | hwnd | visible | process | class | new title
+hook=0x61E31277 — listening. Ctrl+C to stop.
+auto-stop in 1800s

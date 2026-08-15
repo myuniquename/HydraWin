@@ -103,7 +103,9 @@ undoing the core. If the flash-hook half of 09 is a dead end, the title-watcher 
 ## Working rules
 
 - Build: `dotnet build HydraWin.sln` from the repository root — must be warning-free.
-- Unit tests: `dotnet test HydraWin.sln` — report the actual pass/fail totals, not the exit code.
+- Unit tests: `dotnet test --solution HydraWin.sln` — report the actual pass/fail totals, not the
+  exit code. (The `--solution` flag is required: `global.json` puts `dotnet test` into
+  Microsoft.Testing.Platform mode, because the .NET 10 SDK no longer runs xunit v3 under VSTest.)
 - Run: `dotnet run --project src/HydraWin.App` (or the built `hydrawin.exe`).
 - Panic restore during development: `hydrawin.exe --restore-all` (works from task 05 onward);
   until then, spike/test programs must re-show every window they hide before exiting, even on

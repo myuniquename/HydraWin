@@ -1,0 +1,14 @@
+<Project>
+
+  <!--
+    Shared build settings for every project in the repository, including spikes/.
+    Keep this minimal: anything added here also lands on the throwaway spike projects.
+  -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>
