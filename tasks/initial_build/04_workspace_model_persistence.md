@@ -81,6 +81,11 @@ matcher precedence, one-window-per-rule, regex timeout; assign/unassign/auto-reb
 
 ## Record on completion
 
+> **Correction (task 05).** Any tracked-window count quoted below is inflated 2× by the harness
+> duplicate-listing bug described in task 03's correction note. The assignment, persistence and
+> re-attach results are unaffected — they were verified against `state.json` and the task pane,
+> not the tracked count.
+
 Built the model, rule generation and matching, `JsonStore<T>` / `WorkspaceStore`, and
 `WorkspaceService`, plus a throwaway harness for the manual drills. Two more of task 02's
 placeholder suppressions are gone (`WorkspaceState`, `JsonStore<T>`); only `JournalEntry` and

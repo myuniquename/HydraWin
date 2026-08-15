@@ -1,6 +1,6 @@
 # Task 05 — RecoveryJournal: the crash-safety contract
 
-Status: **not started**
+Status: **done** (2026-08-15)
 Depends on: task 04 (reuses `JsonStore<T>` atomic persistence).
 
 ## Motivation
@@ -84,5 +84,142 @@ shown, removed; dead hwnd → removed); DTO ↔ struct placement mapping.
 
 ## Record on completion
 
-*(what was done, deviations and why, test totals, the crash-drill transcript, and the list of
-new / modified / deleted files)*
+Built the interop additions, `RecoveryJournal`, `RestoreService`, and the three escape hatches
+(`--restore-all`, startup recovery, clean exit). The `IWindowApi` seam task 02 reserved is now
+filled in, which is what made the identity checks testable. `JournalEntry`'s task 02 `S2094`
+suppression is gone; only `NotificationRule` remains, for task 09.
+
+### Deviations, and why
+
+- **`RestoreSummary` carries a third count, `Failed`.** The task specifies `{ Restored, Stale }`.
+  But a window that still exists, still passes the identity check, and yet refuses to show is
+  neither restored nor stale — and dropping its entry would strand it hidden forever, which is the
+  exact failure this task exists to prevent. Such entries stay in the journal for a later attempt
+  and are counted separately. The CLI line only mentions them when non-zero, so the specified
+  output is unchanged in the normal case.
+- **`RecoveryJournal` is guarded by a named mutex** (`Local\HydraWinRecoveryJournal`). Task 01
+  recorded this as this task's job: its spike had two processes collide on the journal and lose a
+  write. `--restore-all` can legitimately run while the UI process is live, so every
+  read-modify-write is serialised. `AbandonedMutexException` is treated as ownership — a crashed
+  holder is precisely the case this journal exists for, and `JsonStore` writes atomically so
+  whatever is on disk is a complete document. `WorkspaceStore` is untouched: `state.json` has one
+  writer.
+- **`NativeMethods.TryGetIdentity`** replaces separate `IsWindow` / `IsWindowVisible` /
+  `GetProcessId` wrappers. Sonar's S4200 rejected the trivial forwarders, and folding them is the
+  better shape anyway: every caller asking whether a handle is still a window also needs to know
+  whose it is, since handles are recycled.
+- **Structs are `WindowPlacement` / `Rect` / `Point`**, not the Win32 SCREAMING_CASE names, per
+  S101. They are public because they cross the `IWindowApi` boundary.
+- **Clean-exit restore is unconditional.** `SettingsModel.RestoreOnExit` exists (task 04) and
+  defaults to `true`; task 08 owns wiring the toggle, so gating it here would half-implement that
+  task. Behaviour is identical at the default.
+
+### A bug this task uncovered in tasks 03/04 — and a correction to their records
+
+While chasing a duplicate row in the harness I found that `MainViewModel.Start()` copied
+`tracker.Windows` *after* `tracker.Start()`, which had already delivered a `WindowAppeared` event
+for every window in its initial sweep — synchronously, because the captured
+`SynchronizationContext` is the calling one. **Every window was listed twice.**
+
+The consequence for the earlier records: **the tracked-window counts quoted in tasks 03 and 04 are
+inflated 2×.** Task 03's "26 tracked" and the soak's `27, 28, 27…` series, and task 04's counts,
+were all double the real figure. The real number on this desktop is ~14. Nothing else in those
+tasks is affected — the tracker's own dictionary was always correct, which is why the filter,
+diff, re-attach and persistence results all still stand; only the harness's display was wrong.
+The counts in those two records should be read as doubled.
+
+Fixed in two places:
+- `MainViewModel.AddWindow` now keys on the handle and refuses to list one twice, which covers
+  both the double-copy and a window that flickers away and back as a new instance (packaged
+  Notepad does exactly this).
+- `WindowSetDiff.Compute` now skips a handle seen twice within one sweep, so `Added` can never
+  report the same window twice regardless of what enumeration returns. Covered by
+  `AHandleAppearingTwiceInOneSweepIsReportedOnce`.
+
+### Verification results
+
+- `dotnet build HydraWin.sln` → **0 warnings, 0 errors**. One Sonar finding (S4200, the trivial
+  `IsWindow` wrapper) fixed in code; no suppressions added.
+- `dotnet test --solution HydraWin.sln` → **total: 106, failed: 0, succeeded: 106, skipped: 0**
+  (28 new: 12 journal, 12 restore, 4 placement mapping).
+- `dotnet format --verify-no-changes` → exit 0.
+- The three `spikes/` projects still build clean and `hideshow rescue` still works.
+
+### Crash-drill transcript
+
+Run against a Notepad spawned for the purpose, then repeated on the fixed build against a
+disposable terminal window (packaged Notepad kept exiting on its own mid-drill).
+
+```
+STEP 1  hide through the journal
+        window        0x01021410 "Untitled - Notepad"  vis=n
+        journal.json  1 entry, placement NormalLeft/Top/Right/Bottom = 300/250/1100/850
+
+STEP 2  kill HydraWin with TerminateProcess (no clean shutdown)
+        hydrawin alive: False
+        journal still holds: 1 entry
+        notepad still hidden: True
+
+STEP 3  hydrawin.exe --restore-all
+        exit code: 0
+        stdout:    restored 1 window(s), dropped 0 stale entries
+        notepad    vis=Y, back at its pre-hide rect
+        journal    []
+
+STEP 4  repeat 1-2, then launch with NO arguments
+        notepad    vis=Y
+        journal    []
+        notice     "Recovered 1 window(s) from a previous session — 23:14:39"
+
+STEP 5  hide, kill Notepad while hidden, kill HydraWin, --restore-all
+        exit code: 0
+        stdout:    restored 0 window(s), dropped 1 stale entry
+        journal    []
+
+RE-RUN on the fixed build (0x00571616 "HYDRAWIN-DRILL")
+        hidden     vis=n, journal 1 entry with full identity + placement
+        killed     unclean; still hidden
+        plain launch (no arguments) → vis=Y at exactly (288,294)-(1474,912), journal []
+        clean exit while hidden → restored, journal []
+```
+
+The invariant itself was checked directly: with the window hidden, `journal.json` is on disk
+holding its entry. (A first attempt appeared to show the file missing — that was my measurement
+racing, since `InvokePattern.Invoke` returns before the WPF handler runs. With the wait restored,
+the file is there.)
+
+### An incident worth recording
+
+During the first drill attempt I selected the wrong window: my matcher used a substring, and
+`"Notepad"` matched the user's **Notepad++**, which HydraWin then hid. It was restored within
+seconds by the *Restore all* command, returning to its exact rect `(-1650,266)-(0,1261)` on the
+negative-X second monitor — so the accident doubled as unplanned proof that the restore path is
+pixel-exact on a real window on a secondary display. The drill switched to matching on the exact
+window handle afterwards.
+
+### A measurement note for later tasks
+
+`GetWindowPlacement` values are reported in the *calling process's* coordinate space. On this
+150%-DPI desktop, `hydrawin.exe` (system-DPI-aware WPF) recorded `NormalPosition` as
+`300,250-1100,850` for the same window the DPI-unaware spike reported as `150,125-550,425` —
+exactly 2×. This is consistent and harmless because only HydraWin writes and reads the journal,
+but anything that compares journal placements against numbers from another process must account
+for it.
+
+### Files
+
+New: `src/HydraWin.Core/Interop/Win32WindowApi.cs`;
+`src/HydraWin.Core/Recovery/WindowPlacementDto.cs`, `RecoveryJournal.cs`, `RestoreService.cs`;
+`tests/HydraWin.Core.Tests/FakeWindowApi.cs`, `RecoveryJournalTests.cs`, `RestoreServiceTests.cs`,
+`WindowPlacementDtoTests.cs`.
+
+Modified: `Interop/NativeMethods.cs` (placement struct, show/hide, `TryGetIdentity`),
+`Interop/IWindowApi.cs` (filled in), `Recovery/JournalEntry.cs` (filled in, S2094 suppression
+removed), `Persistence/HydraWinPaths.cs` (`JournalFile`),
+`Tracking/WindowSetDiff.cs` (duplicate-handle guard),
+`src/HydraWin.App/App.xaml.cs` (real `--restore-all`, startup recovery, clean-exit and
+`SessionEnding` restore), `MainWindow.xaml(.cs)`, `ViewModels/MainViewModel.cs` (drill commands,
+persistent recovery notice, duplicate guard),
+`tests/HydraWin.Core.Tests/WindowSetDiffTests.cs`, and this file.
+
+Deleted: none.

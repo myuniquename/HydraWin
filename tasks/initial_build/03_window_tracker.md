@@ -90,6 +90,13 @@ tests for each filter clause and for the reconciliation diff (added/removed/titl
 
 ## Record on completion
 
+> **Correction (task 05).** Every tracked-window *count* below is inflated 2×. The harness's
+> `MainViewModel.Start()` copied `tracker.Windows` after `tracker.Start()` had already raised a
+> `WindowAppeared` for each of them, so the list held every window twice. The real figure on this
+> desktop is ~14, not the 26–29 quoted here, and the soak series should be halved. Everything
+> else stands: the tracker's own dictionary was always correct, so the filter, diff, hooks-only
+> and stability results are unaffected. Fixed in task 05.
+
 Built the interop set, the pure filter/diff core, `WindowTracker`, and the debug harness. All
 verification below was run against the live desktop on 2026-08-15; numbers are the observed ones.
 

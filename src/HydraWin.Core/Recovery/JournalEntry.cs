@@ -1,37 +1,39 @@
 namespace HydraWin.Core.Recovery;
 
-// Temporary suppression: this type is an empty placeholder by design. Task 05 gives it its
-// members (Hwnd, Pid, ProcessPath, TitleAtHide, Placement, HiddenAt) and deletes this pragma
-// pair with it.
-#pragma warning disable S2094 // Classes should not be empty
-
 /// <summary>
-/// One window HydraWin currently has hidden, recorded so a crash can never lose it. Placeholder —
-/// task 05 fills this in with <c>WindowPlacementDto</c>, <c>RecoveryJournal</c> and
-/// <c>RestoreService</c>.
+/// One window HydraWin currently has hidden, recorded so a crash can never lose it.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The project's one invariant: no foreign window is ever hidden before its entry here is flushed
 /// to <c>%APPDATA%\HydraWin\journal.json</c>. The journal therefore always equals "windows
-/// HydraWin currently has hidden", and <c>hydrawin.exe --restore-all</c> must work from it even
-/// when the UI cannot start.
+/// HydraWin currently has hidden", and both <c>hydrawin.exe --restore-all</c> and an ordinary
+/// launch can put them back.
 /// </para>
 /// <para>
-/// An entry needs enough identity to survive HWND recycling — PID plus process image path,
-/// validated at restore time — because a recycled handle must never be shown as if it were the
-/// original window.
-/// </para>
-/// <para>
-/// Task 01's spike hit a concurrency trap worth repeating here: two processes appending to the
-/// journal at the same instant collided on the file, and the second write was lost. Since
-/// <c>--restore-all</c> can legitimately run while the UI process is live, task 05 must decide
-/// this deliberately — a named mutex, or a share mode that permits it plus defined reader
-/// behaviour for a partially written file.
+/// Windows recycles window handles, so <see cref="Hwnd"/> alone is not identity: an entry also
+/// carries <see cref="Pid"/> and <see cref="ProcessPath"/>, and
+/// <see cref="RestoreService"/> refuses to show a handle whose current owner does not match. The
+/// window that inherited a recycled handle could be anything.
 /// </para>
 /// </remarks>
 public sealed class JournalEntry
 {
-}
+    /// <summary>The window handle at the time it was hidden.</summary>
+    public long Hwnd { get; set; }
 
-#pragma warning restore S2094 // Classes should not be empty
+    /// <summary>Owning process id, half of the identity check.</summary>
+    public int Pid { get; set; }
+
+    /// <summary>Owning process image path, the other half.</summary>
+    public string ProcessPath { get; set; } = string.Empty;
+
+    /// <summary>The title when it was hidden, for reporting rather than matching.</summary>
+    public string TitleAtHide { get; set; } = string.Empty;
+
+    /// <summary>Where the window was, so it comes back exactly there.</summary>
+    public WindowPlacementDto Placement { get; set; } = new();
+
+    /// <summary>When it was hidden.</summary>
+    public DateTimeOffset HiddenAt { get; set; }
+}

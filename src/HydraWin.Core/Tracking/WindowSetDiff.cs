@@ -41,7 +41,12 @@ public static class WindowSetDiff
 
         foreach (TrackedWindow window in current)
         {
-            seen.Add(window.Hwnd);
+            // Defensive: a handle appearing twice in one sweep would otherwise be reported as
+            // Added twice, and every consumer would list the window twice.
+            if (!seen.Add(window.Hwnd))
+            {
+                continue;
+            }
 
             if (!previous.TryGetValue(window.Hwnd, out TrackedWindow? existing))
             {

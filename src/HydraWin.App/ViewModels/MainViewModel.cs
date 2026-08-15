@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using HydraWin.Core.Interop;
 using HydraWin.Core.Persistence;
+using HydraWin.Core.Recovery;
 using HydraWin.Core.Tracking;
 using HydraWin.Core.Workspaces;
 
@@ -20,19 +22,30 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly WindowTracker tracker;
     private readonly WorkspaceStore store;
     private readonly WorkspaceService workspaces;
+    private readonly RecoveryJournal journal;
+    private readonly RestoreService restoreService;
+    private readonly IWindowApi windowApi = Win32WindowApi.Instance;
     private bool disposed;
 
-    public MainViewModel()
-        : this(new WindowTracker(EmptyHiddenWindowSet.Instance), new WorkspaceStore())
+    public MainViewModel(RecoveryJournal journal, RestoreService restoreService)
+        : this(new WindowTracker(EmptyHiddenWindowSet.Instance), new WorkspaceStore(), journal, restoreService)
     {
     }
 
-    public MainViewModel(WindowTracker tracker, WorkspaceStore store)
+    public MainViewModel(
+        WindowTracker tracker,
+        WorkspaceStore store,
+        RecoveryJournal journal,
+        RestoreService restoreService)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(journal);
+        ArgumentNullException.ThrowIfNull(restoreService);
         this.tracker = tracker;
         this.store = store;
+        this.journal = journal;
+        this.restoreService = restoreService;
         workspaces = new WorkspaceService(store);
 
         tracker.WindowAppeared += OnWindowAppeared;
@@ -83,13 +96,95 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Where <c>state.json</c> lives, shown so the manual check knows where to look.</summary>
     public string StatePath => store.Path;
 
+    /// <summary>The tracked window the drill commands act on.</summary>
+    [ObservableProperty]
+    public partial TrackedWindow? SelectedWindow { get; set; }
+
+    /// <summary>
+    /// What startup recovery put back, if anything. Kept apart from <see cref="Status"/> because
+    /// that line churns with every window event and would bury the notice within seconds.
+    /// </summary>
+    [ObservableProperty]
+    public partial string RecoveryNotice { get; set; } = string.Empty;
+
+    /// <summary>Reports what startup recovery put back.</summary>
+    public void ShowRecoveryNotice(RestoreSummary summary) =>
+        RecoveryNotice = $"Recovered {summary.Restored} window(s) from a previous session"
+            + (summary.Stale > 0 ? $", dropped {summary.Stale} stale entr(ies)" : string.Empty)
+            + $" — {DateTime.Now:HH:mm:ss}";
+
+    /// <summary>
+    /// Task 05 drill: hides the selected window <em>through the journal</em>, so the crash drill
+    /// can be run before task 06's switch engine exists. Task 07 deletes this.
+    /// </summary>
+    /// <remarks>
+    /// The ordering below is the project's one invariant and is deliberately explicit: capture
+    /// the placement, write and flush the journal entry, and only then call
+    /// <see cref="IWindowApi.Hide"/>. If the entry cannot be written, nothing is hidden.
+    /// </remarks>
+    [RelayCommand]
+    public void HideSelected()
+    {
+        if (SelectedWindow is not TrackedWindow window)
+        {
+            UpdateStatus("select a window first");
+            return;
+        }
+
+        nint hwnd = window.Hwnd;
+        if (!windowApi.TryGetPlacement(hwnd, out WindowPlacement placement))
+        {
+            UpdateStatus($"could not read placement for 0x{hwnd:X}; not hiding it");
+            return;
+        }
+
+        journal.RecordBeforeHide([
+            new JournalEntry
+            {
+                Hwnd = hwnd,
+                Pid = window.Pid,
+                ProcessPath = window.ProcessPath,
+                TitleAtHide = window.Title,
+                Placement = WindowPlacementDto.FromPlacement(in placement),
+                HiddenAt = DateTimeOffset.UtcNow,
+            },
+        ]);
+
+        // Only now, with the entry on disk.
+        ShowWindowResult result = windowApi.Hide(hwnd);
+        if (result.Succeeded)
+        {
+            window.IsHydraWinHidden = true;
+            UpdateStatus($"hid 0x{hwnd:X} \"{window.Title}\" — journaled first");
+        }
+        else
+        {
+            // It refused, so it is not hidden and must not stay on the books.
+            journal.ConfirmShown(hwnd);
+            UpdateStatus($"0x{hwnd:X} refused to hide (win32={result.Win32Error}) — entry removed");
+        }
+    }
+
+    /// <summary>Task 05 drill: restores everything the journal lists.</summary>
+    [RelayCommand]
+    public void RestoreAllWindows()
+    {
+        RestoreSummary summary = restoreService.RestoreAll(journal);
+        foreach (TrackedWindow window in Windows)
+        {
+            window.IsHydraWinHidden = false;
+        }
+
+        UpdateStatus(summary.ToString());
+    }
+
     /// <summary>Starts tracking. Must be called on the dispatcher thread.</summary>
     public void Start()
     {
         tracker.Start();
         foreach (TrackedWindow window in tracker.Windows)
         {
-            Windows.Add(window);
+            AddWindow(window);
         }
 
         RefreshRejected();
@@ -220,12 +315,35 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnWindowAppeared(object? sender, TrackedWindow window)
     {
-        Windows.Add(window);
+        if (!AddWindow(window))
+        {
+            return;
+        }
 
         // Offer it to the re-attach rules: a reopened window rejoins its task without the user
         // touching anything. Raises WindowReattached when a rule claims it.
         workspaces.OnWindowAppeared(window);
         UpdateStatus($"+ {window.ProcessFileName}");
+    }
+
+    /// <summary>
+    /// Adds a window unless its handle is already listed, and reports whether it was new.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the handle rather than the instance: <see cref="Start"/> copies the tracker's
+    /// initial sweep while the same sweep is also delivering <c>WindowAppeared</c> events, and a
+    /// window that flickers away and back — packaged Notepad does exactly this — can arrive as a
+    /// second instance for the same handle. Listing it twice would then be permanent.
+    /// </remarks>
+    private bool AddWindow(TrackedWindow window)
+    {
+        if (Windows.Any(w => w.Hwnd == window.Hwnd))
+        {
+            return false;
+        }
+
+        Windows.Add(window);
+        return true;
     }
 
     private void OnWindowDisappeared(object? sender, TrackedWindow window)

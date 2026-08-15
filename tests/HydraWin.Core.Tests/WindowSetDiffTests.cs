@@ -98,6 +98,17 @@ public class WindowSetDiffTests
     }
 
     [Fact]
+    public void AHandleAppearingTwiceInOneSweepIsReportedOnce()
+    {
+        // Otherwise every consumer lists the window twice, permanently.
+        WindowSetChanges changes = WindowSetDiff.Compute(
+            new Dictionary<nint, TrackedWindow>(),
+            [Window(1, "Once"), Window(1, "Once")]);
+
+        Assert.Single(changes.Added);
+    }
+
+    [Fact]
     public void AnEmptyInventoryReportsEverythingAsAdded()
     {
         WindowSetChanges changes = WindowSetDiff.Compute(

@@ -18,6 +18,77 @@ internal readonly record struct RawWindowInfo(
     bool IsCloaked,
     int Pid);
 
+/// <summary>Win32 <c>POINT</c>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct Point
+{
+    /// <summary>Horizontal coordinate.</summary>
+    public int X;
+
+    /// <summary>Vertical coordinate.</summary>
+    public int Y;
+}
+
+/// <summary>Win32 <c>RECT</c>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct Rect
+{
+    /// <summary>Left edge.</summary>
+    public int Left;
+
+    /// <summary>Top edge.</summary>
+    public int Top;
+
+    /// <summary>Right edge.</summary>
+    public int Right;
+
+    /// <summary>Bottom edge.</summary>
+    public int Bottom;
+}
+
+/// <summary>
+/// Win32 <c>WINDOWPLACEMENT</c>: everything needed to put a window back exactly where it was,
+/// including whether it was maximized.
+/// </summary>
+/// <remarks>
+/// <see cref="Length"/> must equal the struct size before <em>both</em> the get and the set call
+/// or Windows rejects them — silently, with no error worth reading. The wrappers in
+/// <c>NativeMethods</c> own that so no caller can forget it.
+/// </remarks>
+[StructLayout(LayoutKind.Sequential)]
+public struct WindowPlacement
+{
+    /// <summary>Size of this struct in bytes. Set by the wrappers.</summary>
+    public int Length;
+
+    /// <summary>WPF_* flags.</summary>
+    public int Flags;
+
+    /// <summary>The SW_* command describing the window's state.</summary>
+    public int ShowCmd;
+
+    /// <summary>Position when minimized.</summary>
+    public Point MinPosition;
+
+    /// <summary>Position when maximized.</summary>
+    public Point MaxPosition;
+
+    /// <summary>Position when restored — in workspace coordinates, so it survives monitor moves.</summary>
+    public Rect NormalPosition;
+}
+
+/// <summary>
+/// The outcome of a show or hide. <c>ShowWindow</c> returns the window's <em>previous</em>
+/// visibility rather than success (task 01 measured this), so the wrappers verify the real state
+/// afterwards and report it here.
+/// </summary>
+/// <param name="Succeeded">Whether the window actually ended up in the requested state.</param>
+/// <param name="Win32Error">
+/// <c>GetLastError</c> immediately after the call. An elevated window refuses the hide with
+/// error 5 (<c>ERROR_ACCESS_DENIED</c>) under UIPI — that is task 06's <c>Unmanageable</c> case.
+/// </param>
+public readonly record struct ShowWindowResult(bool Succeeded, int Win32Error);
+
 /// <summary>
 /// The single home for every P/Invoke declaration in HydraWin. Nothing above
 /// <c>HydraWin.Core</c> may declare or call Win32 directly (see CLAUDE.md).
@@ -64,6 +135,10 @@ internal static partial class NativeMethods
 
     internal const int OBJID_WINDOW = 0;
     internal const int CHILDID_SELF = 0;
+
+    internal const int SW_HIDE = 0;
+    internal const int SW_SHOW = 5;
+    internal const int SW_SHOWNA = 8;
 
     private const int MaxProcessPathLength = 1024;
 
@@ -145,6 +220,22 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll", EntryPoint = "CloseHandle", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandleCore(nint hObject);
+
+    [LibraryImport("user32.dll", EntryPoint = "ShowWindow", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ShowWindowCore(nint hWnd, int nCmdShow);
+
+    [LibraryImport("user32.dll", EntryPoint = "IsWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindowCore(nint hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowPlacement", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetWindowPlacementCore(nint hWnd, ref WindowPlacement lpwndpl);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowPlacement", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPlacementCore(nint hWnd, ref WindowPlacement lpwndpl);
 
     // ---------------------------------------------------------------- wrappers
 
@@ -242,6 +333,81 @@ internal static partial class NativeMethods
             0,
             0,
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+
+    /// <summary>
+    /// Whether the handle still refers to a live window and, if so, who owns it and whether it is
+    /// visible.
+    /// </summary>
+    /// <remarks>
+    /// One call rather than three because every caller that asks whether a handle is still a
+    /// window also needs to know whose it is: handles get recycled, so existence alone proves
+    /// nothing about identity.
+    /// </remarks>
+    internal static bool TryGetIdentity(nint hwnd, out int pid, out bool visible)
+    {
+        pid = 0;
+        visible = false;
+
+        if (hwnd == 0 || !IsWindowCore(hwnd))
+        {
+            return false;
+        }
+
+        GetWindowThreadProcessIdCore(hwnd, out uint processId);
+        pid = (int)processId;
+        visible = IsWindowVisibleCore(hwnd);
+        return true;
+    }
+
+    /// <summary>
+    /// Reads the window's placement, setting the size field the call requires.
+    /// </summary>
+    internal static bool TryGetPlacement(nint hwnd, out WindowPlacement placement)
+    {
+        placement = new WindowPlacement { Length = Marshal.SizeOf<WindowPlacement>() };
+        return hwnd != 0 && GetWindowPlacementCore(hwnd, ref placement);
+    }
+
+    /// <summary>
+    /// Restores a window's placement — position and maximized state — setting the size field the
+    /// call requires. Task 01 measured this as pixel-exact, including across monitors.
+    /// </summary>
+    internal static bool TrySetPlacement(nint hwnd, in WindowPlacement placement)
+    {
+        if (hwnd == 0)
+        {
+            return false;
+        }
+
+        WindowPlacement copy = placement;
+        copy.Length = Marshal.SizeOf<WindowPlacement>();
+        return SetWindowPlacementCore(hwnd, ref copy);
+    }
+
+    /// <summary>Hides a window and reports whether it actually went away.</summary>
+    internal static ShowWindowResult Hide(nint hwnd) => Apply(hwnd, SW_HIDE, wantVisible: false);
+
+    /// <summary>Shows a window and reports whether it actually came back.</summary>
+    internal static ShowWindowResult Show(nint hwnd) => Apply(hwnd, SW_SHOW, wantVisible: true);
+
+    /// <summary>
+    /// Issues a show command and checks the result against reality rather than trusting the
+    /// return value, which is the window's previous visibility.
+    /// </summary>
+    private static ShowWindowResult Apply(nint hwnd, int command, bool wantVisible)
+    {
+        if (hwnd == 0)
+        {
+            return new ShowWindowResult(false, 0);
+        }
+
+        ShowWindowCore(hwnd, command);
+
+        // Read the error before anything else can overwrite it.
+        int error = Marshal.GetLastWin32Error();
+
+        return new ShowWindowResult(IsWindowVisibleCore(hwnd) == wantVisible, error);
+    }
 
     /// <summary>Releases every hook in the list and empties it. Zero handles are skipped.</summary>
     internal static void UnhookAll(List<nint> hooks)

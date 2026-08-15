@@ -4,9 +4,8 @@ namespace HydraWin.Core.Persistence;
 /// Where HydraWin keeps its files. The one place <c>%APPDATA%\HydraWin\</c> is spelled out.
 /// </summary>
 /// <remarks>
-/// Task 05 adds <c>journal.json</c> here and task 10 adds the <c>logs\</c> directory.
-/// <see cref="JsonStore{T}"/> itself stays path-agnostic so both can be tested against temp
-/// directories.
+/// Task 10 adds the <c>logs\</c> directory. <see cref="JsonStore{T}"/> itself stays path-agnostic
+/// so every store can be tested against a temp directory.
 /// </remarks>
 public static class HydraWinPaths
 {
@@ -17,4 +16,11 @@ public static class HydraWinPaths
 
     /// <summary>Preference data: tasks, assignments, settings.</summary>
     public static string StateFile { get; } = Path.Combine(AppDataDirectory, "state.json");
+
+    /// <summary>
+    /// Crash-safety data: the windows HydraWin currently has hidden. Losing
+    /// <see cref="StateFile"/> costs the user their task layout; losing this could cost them
+    /// their windows.
+    /// </summary>
+    public static string JournalFile { get; } = Path.Combine(AppDataDirectory, "journal.json");
 }

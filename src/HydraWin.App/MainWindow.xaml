@@ -30,11 +30,18 @@
             <Button Content="Clear tasks"
                     Command="{Binding ClearTasksCommand}"
                     Margin="6,0,0,0" Padding="8,2" />
+            <Button Content="Hide selected (journaled)"
+                    Command="{Binding HideSelectedCommand}"
+                    Margin="18,0,0,0" Padding="8,2" />
+            <Button Content="Restore all"
+                    Command="{Binding RestoreAllWindowsCommand}"
+                    Margin="6,0,0,0" Padding="8,2" />
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
             <TextBlock Text="{Binding Status}" Opacity="0.75" />
             <TextBlock Text="{Binding RejectionSummary}" Opacity="0.75" />
+            <TextBlock Text="{Binding RecoveryNotice}" FontWeight="Bold" Foreground="#B35C00" />
         </StackPanel>
 
         <DockPanel DockPanel.Dock="Bottom" Height="150" Margin="0,8,0,0">
@@ -56,6 +63,7 @@
                            Margin="0,0,0,4" />
                 <!-- Virtualization off so the whole inventory is readable for verification. -->
                 <ListBox ItemsSource="{Binding Windows}"
+                         SelectedItem="{Binding SelectedWindow}"
                          VirtualizingStackPanel.IsVirtualizing="False">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
