@@ -35,6 +35,9 @@ placements. Background windows that want attention raise a badge on their task r
 
 - `net8.0-windows`, `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</...>`,
   `.editorconfig` at root, `dotnet format` clean before any completion report.
+- Respect `.editorconfig` for every file it covers, including `*.md` — it sets 2-space indents,
+  a 100-column guideline, and disables trailing-whitespace trimming (Markdown uses a trailing
+  two-space hard line break). Don't reformat against those rules.
 - All P/Invoke lives in `src/HydraWin.Core/Interop/` behind small interfaces. ViewModels and views
   never call Win32 directly.
 - MVVM via `CommunityToolkit.Mvvm`. Views bind; ViewModels orchestrate; Core does the work.
