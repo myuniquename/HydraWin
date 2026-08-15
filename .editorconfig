@@ -7,6 +7,7 @@ indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# Targets net10.0-windows / C# 14.
 [*.cs]
 indent_size = 4
 dotnet_sort_system_directives_first = true
@@ -17,6 +18,8 @@ dotnet_style_qualification_for_property = false:suggestion
 dotnet_style_qualification_for_method = false:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 csharp_style_namespace_declarations = file_scoped:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
 
 [*.xaml]
 indent_size = 4
