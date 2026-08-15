@@ -113,8 +113,9 @@ suppression; mapping flash hwnd → task; regex timeout safety.
    `SW_HIDE`-hidden. An explicit `FlashWindowEx` against the window does the same. Test both
    states: each must badge, and a foreground window must not. Record observed.
 3. Same terminal in a **hidden** task: run a short Claude Code prompt to completion → its task
-   badges via the title rule within ~2 s; tooltip shows the label; clicking the badge switches
-   and focuses the terminal; badge clears.
+   badges via the **flash** channel about **61 s** after the session goes idle (§ B: no title rule
+   ships for Claude Code, and the measured bell latency was accepted); tooltip shows the label;
+   clicking the badge switches and focuses the terminal; badge clears.
 4. Teams hidden in a background task, message sent from a **second account** (a self-chat produces
    nothing — task 01 established that) and with the conversation **read beforehand** (Teams flashes
    only once per unread run, so a stale unread state silently invalidates this test) → badge with

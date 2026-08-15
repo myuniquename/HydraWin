@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using HydraWin.Core.Persistence;
 using HydraWin.Core.Tracking;
+using HydraWin.Core.Workspaces;
 
 namespace HydraWin.App.ViewModels;
 
@@ -16,22 +18,37 @@ namespace HydraWin.App.ViewModels;
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly WindowTracker tracker;
+    private readonly WorkspaceStore store;
+    private readonly WorkspaceService workspaces;
     private bool disposed;
 
     public MainViewModel()
-        : this(new WindowTracker(EmptyHiddenWindowSet.Instance))
+        : this(new WindowTracker(EmptyHiddenWindowSet.Instance), new WorkspaceStore())
     {
     }
 
-    public MainViewModel(WindowTracker tracker)
+    public MainViewModel(WindowTracker tracker, WorkspaceStore store)
     {
         ArgumentNullException.ThrowIfNull(tracker);
+        ArgumentNullException.ThrowIfNull(store);
         this.tracker = tracker;
+        this.store = store;
+        workspaces = new WorkspaceService(store);
 
         tracker.WindowAppeared += OnWindowAppeared;
         tracker.WindowDisappeared += OnWindowDisappeared;
         tracker.WindowTitleChanged += OnWindowTitleChanged;
         tracker.ForegroundChanged += OnForegroundChanged;
+
+        workspaces.TasksChanged += (_, _) => RefreshTasks();
+        workspaces.WindowAssigned += (_, e) => OnAssignmentChanged("assigned", e);
+        workspaces.WindowUnassigned += (_, e) => OnAssignmentChanged("unassigned", e);
+        workspaces.WindowReattached += (_, e) => OnAssignmentChanged("re-attached", e);
+        store.CorruptFileQuarantined += (_, path) =>
+            UpdateStatus($"state.json was corrupt — set aside as {System.IO.Path.GetFileName(path)}");
+        store.SaveFailed += (_, ex) => UpdateStatus($"save failed: {ex.Message}");
+
+        RefreshTasks();
     }
 
     /// <summary>Window title; task 07 makes it <c>HydraWin — &lt;active task&gt;</c>.</summary>
@@ -59,6 +76,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Windows that failed the filter, with the clause that rejected them.</summary>
     public ObservableCollection<RejectedWindow> Rejected { get; } = [];
+
+    /// <summary>Task 04 harness: the persisted tasks and what is bound to them.</summary>
+    public ObservableCollection<string> TaskLines { get; } = [];
+
+    /// <summary>Where <c>state.json</c> lives, shown so the manual check knows where to look.</summary>
+    public string StatePath => store.Path;
 
     /// <summary>Starts tracking. Must be called on the dispatcher thread.</summary>
     public void Start()
@@ -103,6 +126,46 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         UpdateStatus("rejections refreshed");
     }
 
+    /// <summary>
+    /// Task 04 harness: creates two demo tasks and assigns the first tracked windows to them, so
+    /// the manual check has something to persist. Task 07 replaces this with real drag-and-drop.
+    /// </summary>
+    [RelayCommand]
+    public void SeedDemoTasks()
+    {
+        HydraWinTask alpha = workspaces.CreateTask("Alpha");
+        HydraWinTask beta = workspaces.CreateTask("Beta");
+
+        List<TrackedWindow> windows = [.. Windows.Take(4)];
+        for (int i = 0; i < windows.Count; i++)
+        {
+            workspaces.AssignWindow(i % 2 == 0 ? alpha.Id : beta.Id, windows[i]);
+        }
+
+        RefreshTasks();
+    }
+
+    /// <summary>Task 04 harness: writes any pending state immediately.</summary>
+    [RelayCommand]
+    public void FlushState()
+    {
+        workspaces.Flush();
+        UpdateStatus($"flushed to {StatePath}");
+    }
+
+    /// <summary>Task 04 harness: deletes every task, returning their windows to unassigned.</summary>
+    [RelayCommand]
+    public void ClearTasks()
+    {
+        foreach (HydraWinTask task in workspaces.Tasks.ToList())
+        {
+            workspaces.DeleteTask(task.Id);
+        }
+
+        workspaces.Flush();
+        RefreshTasks();
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -116,7 +179,37 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         tracker.WindowTitleChanged -= OnWindowTitleChanged;
         tracker.ForegroundChanged -= OnForegroundChanged;
         tracker.Dispose();
+
+        // Shutdown must not lose the last edits.
+        workspaces.Flush();
+        store.Dispose();
         disposed = true;
+    }
+
+    private void RefreshTasks()
+    {
+        TaskLines.Clear();
+        foreach (HydraWinTask task in workspaces.Tasks)
+        {
+            TaskLines.Add($"{task.Order}. {task.Name}  [{task.ColorHex}]  "
+                + $"{task.Assignments.Count} assignment(s)");
+
+            foreach (WindowAssignment assignment in task.Assignments)
+            {
+                string bound = assignment.BoundHwnd is nint hwnd
+                    ? $"0x{hwnd:X}"
+                    : "unbound";
+                TaskLines.Add($"      {assignment.Rule.ProcessFileName} "
+                    + $"\"{assignment.Rule.TitlePattern}\" — {bound}");
+            }
+        }
+    }
+
+    private void OnAssignmentChanged(string what, AssignmentChangedEventArgs e)
+    {
+        RefreshTasks();
+        string window = e.Window?.Title ?? e.Assignment.Rule.TitlePattern;
+        UpdateStatus($"{what}: {window} ↔ {e.Task.Name}");
     }
 
     partial void OnReconciliationEnabledChanged(bool value)
@@ -128,12 +221,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void OnWindowAppeared(object? sender, TrackedWindow window)
     {
         Windows.Add(window);
+
+        // Offer it to the re-attach rules: a reopened window rejoins its task without the user
+        // touching anything. Raises WindowReattached when a rule claims it.
+        workspaces.OnWindowAppeared(window);
         UpdateStatus($"+ {window.ProcessFileName}");
     }
 
     private void OnWindowDisappeared(object? sender, TrackedWindow window)
     {
         Windows.Remove(window);
+
+        // Drops the binding but keeps the rule, so the window re-attaches when it comes back.
+        workspaces.OnWindowDisappeared(window.Hwnd);
         UpdateStatus($"- {window.ProcessFileName}");
     }
 
