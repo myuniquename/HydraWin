@@ -162,3 +162,39 @@ Deleted: `spikes/.gitignore`.
 
 Each placeholder's XML comment names the task that fills it and carries the constraints that task
 must honour, so nobody has to re-read task 01 to avoid the traps it found.
+
+### Addendum — SonarAnalyzer.CSharp added (same day, at the user's request)
+
+`SonarAnalyzer.CSharp` **10.32.0.713** is referenced by all three solution projects
+(`PrivateAssets=all`), so its findings are build failures under warnings-as-errors. It is
+deliberately **not** applied to `spikes/`; the reference sits in each `.csproj` rather than in the
+root `Directory.Build.props`, which is shared with the spikes.
+
+The first analyzed build reported **six findings, all in Core, all caused by the deliberately
+empty placeholders**:
+
+| Rule | Count | Where |
+| --- | --- | --- |
+| S2094 *Classes should not be empty* | 5 | `TrackedWindow`, `WorkspaceState`, `JsonStore<T>`, `JournalEntry`, `NotificationRule` |
+| S2326 *Unused type parameters should be removed* | 1 | `JsonStore<T>` — a consequence of the same emptiness |
+
+Nothing was reported in `HydraWin.App` or `HydraWin.Core.Tests`. Two types predicted to be flagged
+were **not**: `NativeMethods` (S2094 does not fire on an empty *static* class) and `IWindowApi`
+(S4023 is not in the default rule set), so neither needed a suppression.
+
+The user granted permission for narrow, temporary suppressions for exactly this placeholder
+conflict. Each affected type is wrapped in a `#pragma warning disable` / `restore` pair — never a
+file-wide or project-wide setting — with a comment naming the task that removes it and the members
+that will replace the emptiness. `#pragma` was chosen over `[SuppressMessage]` because that
+attribute only applies when its `Category` string matches the diagnostic exactly, and a wrong
+category silently does nothing. **These are the repository's only suppressions.**
+
+`.editorconfig` was **not** changed. The only reason to touch it would be
+`dotnet_diagnostic.SXXXX.severity` entries, which is the rule-changing the user withheld
+permission for.
+
+Verified: the analyzer genuinely runs rather than merely being referenced. An identical S3923
+violation compiled into `HydraWin.Core` fails the build, and the same code in
+`spikes/HideShow` builds clean — confirming both that the analyzer is active in the solution and
+that the spikes are excluded. S1481 was likewise confirmed to fire in all three solution projects
+individually. All probe files were deleted afterwards.

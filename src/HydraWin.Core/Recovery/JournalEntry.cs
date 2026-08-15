@@ -1,5 +1,10 @@
 namespace HydraWin.Core.Recovery;
 
+// Temporary suppression: this type is an empty placeholder by design. Task 05 gives it its
+// members (Hwnd, Pid, ProcessPath, TitleAtHide, Placement, HiddenAt) and deletes this pragma
+// pair with it.
+#pragma warning disable S2094 // Classes should not be empty
+
 /// <summary>
 /// One window HydraWin currently has hidden, recorded so a crash can never lose it. Placeholder —
 /// task 05 fills this in with <c>WindowPlacementDto</c>, <c>RecoveryJournal</c> and
@@ -28,3 +33,5 @@ namespace HydraWin.Core.Recovery;
 public sealed class JournalEntry
 {
 }
+
+#pragma warning restore S2094 // Classes should not be empty

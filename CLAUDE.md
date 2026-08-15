@@ -39,6 +39,14 @@ placements. Background windows that want attention raise a badge on their task r
 
 - `net10.0-windows`, `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</...>`,
   `.editorconfig` at root, `dotnet format` clean before any completion report.
+- **`SonarAnalyzer.CSharp` runs on every build of every project in `HydraWin.sln`, and warnings
+  are errors — so its findings are build failures. Fix them.** Never suppress a rule, change a
+  severity, or add `dotnet_diagnostic.*` entries to `.editorconfig` without the user's explicit
+  permission; if a finding looks wrong, stop and ask rather than silence it. Every solution
+  project references the analyzer — add it to any new one. `spikes/` deliberately does not have
+  it (throwaway task-01 code). The repository's only suppressions are the temporary `#pragma
+  warning disable S2094` / `S2326` pairs around task 02's empty placeholder types; each is
+  deleted by the task that fills its type in.
 - Respect `.editorconfig` for every file it covers, including `*.md` — it sets 2-space indents,
   a 100-column guideline, and disables trailing-whitespace trimming (Markdown uses a trailing
   two-space hard line break). Don't reformat against those rules.

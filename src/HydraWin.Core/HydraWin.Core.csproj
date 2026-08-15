@@ -12,7 +12,14 @@
 
   <!--
     Core is UI-free on purpose: no WPF reference, so its logic stays unit-testable.
-    It also takes no NuGet dependencies - System.Text.Json is in-box.
+    It takes no runtime NuGet dependencies - System.Text.Json is in-box.
   -->
+
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.32.0.713">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 
 </Project>

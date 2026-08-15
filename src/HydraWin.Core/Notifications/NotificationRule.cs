@@ -1,5 +1,9 @@
 namespace HydraWin.Core.Notifications;
 
+// Temporary suppression: this type is an empty placeholder by design. Task 09 gives it its
+// members (ProcessFileName, TitleRegex, Kind, Label) and deletes this pragma pair with it.
+#pragma warning disable S2094 // Classes should not be empty
+
 /// <summary>
 /// A rule that turns a window signal into a task badge. Placeholder — task 09 fills this in
 /// alongside <c>NotificationKind</c> and <c>NotificationHub</c>.
@@ -26,3 +30,5 @@ namespace HydraWin.Core.Notifications;
 public sealed class NotificationRule
 {
 }
+
+#pragma warning restore S2094 // Classes should not be empty

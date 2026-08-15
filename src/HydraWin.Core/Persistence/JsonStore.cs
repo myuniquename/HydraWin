@@ -1,5 +1,11 @@
 namespace HydraWin.Core.Persistence;
 
+// Temporary suppression: this type is an empty placeholder by design, which is also why its type
+// parameter is unused. Task 04 gives it Load/Save over <typeparamref name="T"/> and deletes this
+// pragma pair with it.
+#pragma warning disable S2094 // Classes should not be empty
+#pragma warning disable S2326 // Unused type parameters should be removed
+
 /// <summary>
 /// Atomic load-or-default / save for a JSON-backed document. Placeholder — task 04 implements it
 /// and task 05 reuses it for the recovery journal rather than writing a second persistence
@@ -24,3 +30,6 @@ public sealed class JsonStore<T>
     where T : class, new()
 {
 }
+
+#pragma warning restore S2326 // Unused type parameters should be removed
+#pragma warning restore S2094 // Classes should not be empty
