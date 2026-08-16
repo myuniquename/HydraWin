@@ -1,6 +1,6 @@
 # Task 04 — Workspace model and persistence
 
-Status: **done** (2026-08-15)
+Status: **done** (2026-08-15, accepted 2026-08-16)
 Depends on: task 02 (scaffold). Independent of task 03.
 
 ## Motivation

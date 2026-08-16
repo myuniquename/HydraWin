@@ -1,6 +1,6 @@
 # Task 08 — Tray icon, global hotkeys, single instance
 
-Status: **implemented; awaiting the user's acceptance walkthrough**
+Status: **done** (2026-08-16) — accepted by the user
 Depends on: task 07 (UI shell — the tray reopens it; hotkeys drive SwitchEngine).
 
 ## Motivation
@@ -169,4 +169,6 @@ which asserts against what actually lands on disk rather than against an in-memo
 
 ### User walkthrough
 
-*(to be filled in with the user's observed results for steps 1–6)*
+**Accepted by the user on 2026-08-16 without a separate walkthrough being recorded.** The evidence
+for steps 1–6 is the implementer's smoke test in the table above, which covered all of them against
+throwaway windows. No user-observed results exist for this task, and none should be inferred.

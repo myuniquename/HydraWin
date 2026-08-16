@@ -1,6 +1,6 @@
 # Task 02 — Solution scaffold
 
-Status: **done** (2026-08-15)
+Status: **done** (2026-08-15, accepted 2026-08-16)
 Depends on: nothing (01 informs later tasks, not this one).
 
 ## Motivation

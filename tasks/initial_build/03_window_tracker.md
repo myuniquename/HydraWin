@@ -1,6 +1,6 @@
 # Task 03 — WindowTracker
 
-Status: **done** (2026-08-15)
+Status: **done** (2026-08-15, accepted 2026-08-16)
 Depends on: task 02 (solution scaffold — projects and `Interop/` location exist).
 
 ## Motivation

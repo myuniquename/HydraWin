@@ -75,12 +75,15 @@ placements. Background windows that want attention raise a badge on their task r
 
 | Topic | Where |
 | --- | --- |
-| The build plan, decisions, and task ordering | `tasks/initial_build/_plan.md` |
+| The build plan: scope, decisions, ordering, ground rules | `tasks/initial_build/_plan.md` |
+| Where the work stands — per-task status | `tasks/initial_build/_status.md` |
 | Individual work items (standalone-implementable) | `tasks/initial_build/NN_*.md` |
 | Durable architecture docs | `docs/` — empty until findings are promoted (task 11) |
 
-`docs/` holds timeless findings; `tasks/` holds progress. `docs/` never tracks task status.
-Completed task folders are deleted after promotion, not archived.
+`docs/` holds timeless findings; `tasks/` holds progress. Within `tasks/initial_build/`, `_plan.md`
+is the durable plan and carries no status, `_status.md` is the one place task status is tracked,
+and each task file records its own outcome. `docs/` never tracks task status. Completed task
+folders are deleted after promotion, not archived.
 
 ## Shared knowledge
 

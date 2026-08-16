@@ -1,6 +1,6 @@
 # Task 06 — Switch engine
 
-Status: **done** (2026-08-16)
+Status: **done** (2026-08-16, accepted 2026-08-16)
 Depends on: task 03 (WindowTracker — inventory + `LastForegroundWindow`), task 05
 (RecoveryJournal — journal-before-hide). Consult task 01's recorded results for per-app
 hide/show quirks before implementing.

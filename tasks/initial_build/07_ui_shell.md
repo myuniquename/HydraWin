@@ -1,6 +1,6 @@
 # Task 07 — UI shell: task table, unassigned pane, drag-and-drop
 
-Status: **implemented; awaiting the user's acceptance walkthrough**
+Status: **done** (2026-08-16) — accepted by the user
 Depends on: task 03 (WindowTracker events), task 04 (WorkspaceService), task 06 (SwitchEngine).
 
 ## Motivation
@@ -428,7 +428,12 @@ pressed immediately afterwards — with no mouse input in between — raised the
 
 ### User walkthrough
 
-*(to be filled in with the user's observed results for steps 1–8)*
+**Accepted by the user on 2026-08-16 without a separate step-by-step walkthrough being recorded.**
+The user drove the UI directly across several rounds of feedback instead — every item they raised
+(drag feedback, stay-on-top, elevated and own windows in the list, the rename box, Del to delete,
+keeping focus on task selection) was fixed and verified in the rounds recorded above. The evidence
+for §§ 1–8 is therefore the implementer's smoke test plus those feedback rounds, not a single
+sign-off run; recording it as anything else would overstate it.
 
 ### Files
 

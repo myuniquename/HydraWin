@@ -1,6 +1,7 @@
 # Task 01 — Spike: verify the risky Win32 assumptions
 
-Status: **done** (2026-08-15) — all three questions answered with observed evidence. The headline
+Status: **done** (2026-08-15, accepted 2026-08-16) — all three questions answered with observed
+evidence. The headline
 correction to the plan: flashes **do** reach `SW_HIDE`-hidden windows, including real Teams
 message notifications, so the notification design works as intended. See *Consequences* below.
 Depends on: nothing.

@@ -65,6 +65,8 @@ undoing the core. If the flash-hook half of 09 is a dead end, the title-watcher 
 
 ## Task index
 
+Which of these are done is tracked in `_status.md`, not here.
+
 | # | File | What it settles |
 | --- | --- | --- |
 | 01 | `01_spike_win32_assumptions.md` | Whether the three risky Win32 assumptions hold; recorded facts the later tasks build on |

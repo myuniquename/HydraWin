@@ -1,6 +1,6 @@
 # Task 05 — RecoveryJournal: the crash-safety contract
 
-Status: **done** (2026-08-15)
+Status: **done** (2026-08-15, accepted 2026-08-16)
 Depends on: task 04 (reuses `JsonStore<T>` atomic persistence).
 
 ## Motivation
