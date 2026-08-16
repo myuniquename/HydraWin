@@ -1,17 +1,21 @@
 # spikes/
 
-Throwaway programs from task 01 (`tasks/initial_build/01_spike_win32_assumptions.md`). They are
-not part of `HydraWin.sln` and are not meant to be. Their durable descendants live in
-`src/HydraWin.Core/Interop/` from task 02 onward; the *findings* they produced are recorded in
-task 01's **Record on completion** and in `tasks/initial_build/reference/`.
+Throwaway programs written to answer three questions before the app existed: does a hidden window
+still flash, does hide → show round-trip cleanly for real applications, and what do the interesting
+title transitions actually look like. They are not part of `HydraWin.sln` and are not meant to be.
+Their durable descendants live in `src/HydraWin.Core/Interop/`; the *findings* they produced are in
+`docs/workspaces/architecture.md` and `docs/notifications/architecture.md`.
+
+They are kept because they are the tooling for re-measuring any of it — three separate wrong
+answers were recorded here before the settings involved were right, so measure rather than assume.
 
 Each is a standalone `net10.0-windows` console app — `dotnet run` from its own folder, or run the
 built exe directly.
 
 ## Safety contract
 
-`HideShow` is the only spike that hides anything. Because HydraWin's real recovery journal (task
-05) does not exist yet, it carries a miniature one at
+`HideShow` is the only spike that hides anything. It predates HydraWin's real recovery journal and
+does not use it, so it carries a miniature one of its own at
 `%APPDATA%\HydraWin\spike-hidden.jsonl`: one line per hidden window, written and
 `Flush(flushToDisk: true)`-ed **before** `ShowWindow(SW_HIDE)`, removed only after a verified
 re-show. Restore runs from `finally`, `Console.CancelKeyPress`, `ProcessExit`,

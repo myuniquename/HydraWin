@@ -16,51 +16,53 @@ placements. Background windows that want attention raise a badge on their task r
   the UI cannot start.
 - **No undocumented Windows APIs.** The OS virtual-desktop COM interfaces
   (`IVirtualDesktopManagerInternal` etc.) were evaluated and rejected — their GUIDs change with
-  Windows feature updates. Do not reintroduce them. The rejection rationale lives in
-  `tasks/initial_build/_plan.md` § *Investigation results* while that folder exists, and in
-  `docs/` after promotion.
+  Windows feature updates. Do not reintroduce them. The rejection rationale is in
+  `docs/workspaces/architecture.md` § *Why HydraWin hides windows itself*.
 - **WinEvent/hook delegates must be kept alive.** A `SetWinEventHook` callback passed as a lambda
   gets garbage-collected and the hook dies silently. Store the delegate in a field with the same
   lifetime as the hook.
 - **`SetForegroundWindow` only works when HydraWin is the foreground process** — which it is during
   a user-initiated switch. Do not add focus-stealing workarounds (`AttachThreadInput` tricks) for
   paths where the user didn't just click HydraWin.
-- **Elevated processes' windows cannot be hidden from a non-elevated HydraWin** (UIPI). Since
-  task 07 they are **kept out of the inventory entirely** rather than listed and marked: a window
-  the app can never hide has no business being offered as something to put in a task. Detection is
+- **Elevated processes' windows cannot be hidden from a non-elevated HydraWin** (UIPI). They are
+  **kept out of the inventory entirely** rather than listed and marked: a window the app can never
+  hide has no business being offered as something to put in a task. Detection is
   `NativeMethods.IsProcessElevated`, and being unable to query the token counts as elevated —
   guessing the other way would put an unmanageable window in front of the user. When HydraWin is
   itself elevated the clause does not apply and such windows are ordinary.
   `WindowAssignment.Unmanageable` stays as the runtime safety net for a hide that fails anyway.
-- **Both notification channels reach hidden windows** — task 01 measured this, contradicting the
-  original assumption that a missing taskbar button would suppress flashes. `HSHELL_FLASH` is
-  delivered for `SW_HIDE`-hidden windows (confirmed for real Teams messages and for a hidden
-  Windows Terminal bell), and `EVENT_OBJECT_NAMECHANGE` fires regardless of visibility. Teams
-  never changes its window title, and it flashes only once per unread run, so its badge must be
-  cleared by focus alone. Trust task 01's recorded results, not assumptions.
+- **Both notification channels reach hidden windows** — measured, and it contradicts the intuition
+  that a missing taskbar button would suppress flashes. `HSHELL_FLASH` is delivered for
+  `SW_HIDE`-hidden windows (confirmed for real Teams messages and for a hidden Windows Terminal
+  bell), and `EVENT_OBJECT_NAMECHANGE` fires regardless of visibility. Teams never changes its
+  window title, and it flashes only once per unread run, so its badge must be cleared by focus
+  alone. Trust the recorded measurements in `docs/notifications/architecture.md`, not assumptions.
 - **Claude Code notifies by flash, 61 seconds late; its title is for display only.** A Windows
   Terminal bell does raise `HSHELL_FLASH` given a valid `bellStyle` — `"all"`/`"audible"`/
   `"window"`/`"taskbar"`; **`"taskbarFlash"` is not valid and is silently ignored**, which is what
-  made task 01's first two answers wrong. Claude Code rings that bell **~61 s after a session goes
-  idle** (61.1 s across five sessions, consistent to 0.1 s). The user accepted that latency:
-  **task 09 ships no Claude Code title rule** and badges it from the flash like any other app.
+  made the first two measurements of this wrong. Claude Code rings that bell **~61 s after a
+  session goes idle** (61.1 s across five sessions, consistent to 0.1 s). The user accepted that
+  latency: **no Claude Code title rule ships**, and it badges from the flash like any other app.
   The `<marker> <name>` title — spinner `◐ ◑ ◒ ◓` (`U+25D0`–`U+25D3`) while working, `✳`
-  (`U+2733`) when idle — is still parsed, but only to show live progress in the overview
-  (task 07 § F). Requires `bellStyle` to include `"taskbar"` and Claude Code's
-  `preferredNotifChannel` to be `terminal_bell`.
+  (`U+2733`) when idle — is still parsed, but only to show live progress in the overview. Requires
+  `bellStyle` to include `"taskbar"` and Claude Code's `preferredNotifChannel` to be
+  `terminal_bell`.
 
 ## Style
 
 - `net10.0-windows`, `<Nullable>enable</Nullable>`, `<TreatWarningsAsErrors>true</...>`,
   `.editorconfig` at root, `dotnet format` clean before any completion report.
+- Build with `dotnet build HydraWin.sln`; test with **`dotnet test --solution HydraWin.sln`** — the
+  flag is required, because `global.json` puts the SDK into Microsoft.Testing.Platform mode and a
+  bare `dotnet test HydraWin.sln` is interpreted differently. Report the real pass/fail totals,
+  never the exit code. More build detail in `docs/ui/reference.md` § *Build and publish*.
 - **`SonarAnalyzer.CSharp` runs on every build of every project in `HydraWin.sln`, and warnings
   are errors — so its findings are build failures. Fix them.** Never suppress a rule, change a
   severity, or add `dotnet_diagnostic.*` entries to `.editorconfig` without the user's explicit
   permission; if a finding looks wrong, stop and ask rather than silence it. Every solution
   project references the analyzer — add it to any new one. `spikes/` deliberately does not have
-  it (throwaway task-01 code). The repository's only suppressions are the temporary `#pragma
-  warning disable S2094` / `S2326` pairs around task 02's empty placeholder types; each is
-  deleted by the task that fills its type in.
+  it (throwaway measurement code). **The repository carries no suppressions at all** — keep it
+  that way.
 - Respect `.editorconfig` for every file it covers, including `*.md` — it sets 2-space indents,
   a 100-column guideline, and disables trailing-whitespace trimming (Markdown uses a trailing
   two-space hard line break). Don't reformat against those rules.
@@ -68,22 +70,25 @@ placements. Background windows that want attention raise a badge on their task r
   never call Win32 directly.
 - MVVM via `CommunityToolkit.Mvvm`. Views bind; ViewModels orchestrate; Core does the work.
 - Tests are xUnit in `tests/HydraWin.Core.Tests`, covering the pure logic (matching rules, journal,
-  model, badge aggregation). Win32-dependent behaviour is verified by the manual scripts in each
-  task file — record the observed results.
+  model, badge aggregation). Win32-dependent behaviour has no automated coverage: verify it by
+  hand against throwaway windows and report the observed results, never the exit code. The recipes
+  in each `docs/*/how_to.md` are the drills worth running.
 
 ## Where to read
 
 | Topic | Where |
 | --- | --- |
-| The build plan: scope, decisions, ordering, ground rules | `tasks/initial_build/_plan.md` |
-| Where the work stands — per-task status | `tasks/initial_build/_status.md` |
-| Individual work items (standalone-implementable) | `tasks/initial_build/NN_*.md` |
-| Durable architecture docs | `docs/` — empty until findings are promoted (task 11) |
+| Window inventory, task model, switching, crash recovery | `docs/workspaces/` |
+| How a hidden window asks for attention, and what it costs | `docs/notifications/` |
+| The shell: rows, gestures, tray, hotkeys, dialogs, lifecycle | `docs/ui/` |
 
-`docs/` holds timeless findings; `tasks/` holds progress. Within `tasks/initial_build/`, `_plan.md`
-is the durable plan and carries no status, `_status.md` is the one place task status is tracked,
-and each task file records its own outcome. `docs/` never tracks task status. Completed task
-folders are deleted after promotion, not archived.
+Each folder has the same four files: `README.md` is the hub, `architecture.md` explains how it
+works and why, `how_to.md` holds recipes, `reference.md` holds schemas and surfaces. Start at the
+README — its table says which of the other three answers your question.
+
+`docs/` holds timeless findings; `tasks/` holds progress, and a completed task folder is deleted
+after its findings are promoted, not archived. `docs/` never tracks task status: no "done", no
+dates-as-progress, no per-task file lists.
 
 ## Shared knowledge
 
@@ -96,9 +101,10 @@ godot-mcp — do not apply to this repository).
 - **Version control is the user's job.** Do not `git init`, do not run Perforce write commands.
   Every completion report ends with the list of new / modified / deleted files for the user to
   reconcile in one pass.
-- Work tasks in `_plan.md` order unless the dependency notes say otherwise. Each task file
-  restates the background it needs — do not assume sibling tasks were read.
-- Fill in **Record on completion** honestly: what was actually done, how it differed from the
-  plan and why, measured results, and the file list.
-- Do not claim success without the actual command output (build, tests, or the manual script's
-  observed results).
+- New work goes in a `tasks/<feature>/` folder: a `_plan.md` that carries no status, a `_status.md`
+  that is the one place status is tracked, and standalone-implementable `NN_*.md` items that each
+  restate the background they need. Each records its own outcome honestly — what was actually done,
+  how it differed from the plan and why, and measured results. When the feature is finished,
+  promote what is durable into `docs/` and delete the folder.
+- Do not claim success without the actual command output (build, tests, or the observed results of
+  a manual drill).
