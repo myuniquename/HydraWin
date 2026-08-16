@@ -194,7 +194,17 @@
                                                      Converter={StaticResource CountToVisibility}}">
                             <TextBlock Text="{Binding NotificationCount}" Foreground="White"
                                        FontSize="10" FontWeight="Bold" Margin="4,0"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <!-- Centering aligns the text *box*, and Segoe UI reserves more
+                                     room above the baseline than digits use, so a box-centred
+                                     digit renders 1px low. Nudge the ink, not the layout: a
+                                     margin would be halved by the centring and would disturb the
+                                     pill width that Margin="4,0" sets for two-digit counts.
+                                     Measured for FontSize 10 in a 16px badge. -->
+                                <TextBlock.RenderTransform>
+                                    <TranslateTransform Y="-1" />
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
                         </Border>
 
                         <TextBlock Grid.Column="5" VerticalAlignment="Center" Opacity="0.55"

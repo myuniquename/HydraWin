@@ -229,3 +229,15 @@ real Teams message from a second account — the same conditions task 01 used to
 ### User walkthrough
 
 *(outstanding: § 3 Claude Code, § 4 Teams, § 6 soak — and the bell→flash question above)*
+
+### Post-acceptance fix: the digit sat low in the badge (2026-08-16)
+
+The user reported the count rendering below the circle's centre. Cause: `VerticalAlignment="Center"`
+centres the text *box*, and Segoe UI reserves more room above the baseline (ascent ≈ 1.08 em) than
+digits occupy (cap height ≈ 0.70 em), so the ink lands ≈ 0.6 px low inside a correctly-centred
+box; `UseLayoutRounding="True"` then snaps that out to a whole device pixel. Measured in a
+throwaway rig reproducing the badge at 192 dpi: **+2 device pixels low** as shipped, and **0** with
+a `TranslateTransform Y="-1"` on the TextBlock — identical for counts 1, 2, 9 and 12. Confirmed in
+the running app by flashing a scratch window and measuring the capture: **−0.5 px**, i.e. centred
+within noise. A render transform rather than a margin, so the pill width that `Margin="4,0"`
+sets for two-digit counts is untouched. `MainWindow.xaml` only; 224 tests still pass.
