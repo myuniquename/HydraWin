@@ -31,13 +31,14 @@ testing, which matters because that is the channel Claude Code notifies on. Ever
 task was verified live, including badging a window HydraWin had hidden — see 09's record.
 
 **Task 10 is implemented and awaiting the user's acceptance walkthrough (2026-08-16).** It closes
-the deferred edges: always-visible pinned windows, the settings dialog (general, hotkey editor,
-notification rules), the re-attach rule editor with live preview, a rolling activity log and crash
-handlers that restore every hidden window before letting the process die. Two of its sections
-changed shape first, both with the user: § A's shield was superseded by task 07's exclusion of
-elevated windows, and **launch at login was dropped from the project** rather than deferred again.
-The multi-monitor clamp turned out to be unnecessary — measured, not assumed. Its own § Verification
-1 (elevated Notepad) and the disconnect/reconnect check need the user's hardware.
+the deferred edges: the settings dialog (general, hotkey editor, notification rules), the re-attach
+rule editor with live preview, a rolling activity log, and crash handlers that restore every hidden
+window before letting the process die. Three of its sections did not ship as written, each on the
+user's call: § A's shield was superseded by task 07's exclusion of elevated windows, **launch at
+login was dropped from the project** rather than deferred again, and **§ B (always-visible pinned
+windows) was built, verified and then cut in full**. The multi-monitor clamp turned out to be
+unnecessary — measured, not assumed. § Verification 1 (elevated Notepad) and the
+disconnect/reconnect check need the user's hardware.
 
 **Outstanding: 11 (promote `docs/`).** It has not run, so `docs/` is still empty and this folder is
 still the only home for the project's findings.

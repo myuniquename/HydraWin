@@ -13,7 +13,7 @@ public partial class RuleEditorWindow : Window
     private readonly WindowViewModel window;
     private readonly RuleEditorViewModel editor;
 
-    /// <summary>Opens the editor for a window that belongs to a task or is pinned.</summary>
+    /// <summary>Opens the editor for a window that belongs to a task.</summary>
     public RuleEditorWindow(MainViewModel main, WindowViewModel window)
     {
         ArgumentNullException.ThrowIfNull(main);

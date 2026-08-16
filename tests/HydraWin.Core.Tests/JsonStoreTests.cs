@@ -106,7 +106,7 @@ public sealed class JsonStoreTests : IDisposable
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(StatePath));
 
         Assert.Equal(
-            ["Tasks", "ActiveTaskId", "GlobalWindows", "Settings"],
+            ["Tasks", "ActiveTaskId", "Settings"],
             document.RootElement.EnumerateObject().Select(p => p.Name));
 
         JsonElement firstTask = document.RootElement.GetProperty("Tasks")[0];

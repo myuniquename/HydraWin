@@ -7,11 +7,9 @@ namespace HydraWin.Core.Workspaces;
 /// handle it is currently bound to.
 /// </summary>
 /// <remarks>
-/// The same type serves both a task's windows and the always-visible pins in
-/// <see cref="WorkspaceState.GlobalWindows"/> — a pin is an assignment that lives outside every
-/// task, which is what keeps it out of <see cref="SwitchPlan"/>. There is deliberately no
-/// <c>IsGlobal</c> flag: which list it is in <em>is</em> the answer, and a flag could disagree
-/// with that.
+/// An assignment only ever lives inside a <see cref="HydraWinTask"/>. A window that belongs to no
+/// task has no assignment at all, which is precisely why <see cref="SwitchPlan"/> — built from
+/// task assignments — leaves unassigned windows visible in every task.
 /// </remarks>
 public sealed class WindowAssignment
 {

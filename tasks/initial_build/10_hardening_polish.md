@@ -28,10 +28,10 @@ net for a window that looked ordinary and refused `SW_HIDE` anyway.
 - Explicitly out (record if requested later): running HydraWin elevated.
 
 ### B. Pinned / global windows
-- New assignment target: a built-in pseudo-task **Global** (music player, this manager…).
-  Model: flag on the assignment, not a real `HydraWinTask`. Global windows are never hidden by any
-  switch; UI shows them in a slim section under the task list; drag in/out like any task.
-- HydraWin's own window remains special: not trackable at all (task 03 filter), not just global.
+**Cut from the project** on the user's instruction (2026-08-16). It was built, verified and then
+removed in full — see the record. Unassigned windows already stay visible through every switch, so
+nothing the user can reach today depends on it.
+- HydraWin's own window remains special: not trackable at all (task 03 filter).
 
 ### C. Rule editing UI
 - Per-assignment: *Edit re-attach rule…* dialog — process file name, pattern, substring/regex
@@ -63,7 +63,7 @@ deferred — the user's instruction on 2026-08-16.
 1. Elevated Notepad (Run as administrator) → confirm it is **absent** from the unassigned list, and
    that aiming the picker crosshair at it explains why. (Rewritten: § A's shield was superseded by
    task 07's exclusion.)
-2. Pin a media player Global → visible across all switches; unpin → behaves as unassigned.
+2. ~~Pin a media player Global.~~ Nothing to check — § B was cut.
 3. Edit a VS Code re-attach rule to a folder-specific regex with live preview; close/reopen
    VS Code → re-attaches per the new rule. Break the regex → inline error, rule disabled, no
    crash, tracker unaffected.
@@ -85,6 +85,9 @@ deferred — the user's instruction on 2026-08-16.
 - **Launch at login is dropped from the project**, not deferred again. Struck from this file and
   from `08_tray_and_hotkeys.md` § D. HydraWin touches no registry at all.
 
+A third decision came after the work: **§ B, always-visible windows, was cut** once the user had
+seen it. See the section below.
+
 ### A. Unmanageable windows — what was actually left
 
 Most of § A already existed: the filter drops elevated windows (`TrackableVerdict.Elevated`), the
@@ -98,26 +101,25 @@ Two gaps closed:
   actually means now that elevation is filtered upstream — a protected process, or one that became
   elevated after HydraWin first saw it.
 
-### B. Always-visible windows
+### B. Always-visible windows — built, then cut
 
-Modelled as `WorkspaceState.GlobalWindows`, a plain list beside `Tasks` — deliberately **not** a
-reserved `HydraWinTask`. `SwitchPlan.Compute` builds its hide set by walking `Tasks`, so a pinned
-window is *structurally* impossible to hide rather than protected by a rule somebody has to
-remember. It also keeps pins out of `HydraWinTask.Order`, which the `Ctrl+Alt+1..9` bindings use.
+Implemented as specified, verified live (a pinned window stayed visible through `Ctrl+Alt+1`,
+`Ctrl+Alt+2` and show-all, never entered the journal, and re-attached by its own rule after a
+restart), and then **removed in full at the user's request** the same day. What went, went
+completely: `WorkspaceState.GlobalWindows`, `WorkspaceService.PinGlobal`/`IsGlobal`/`GlobalsChanged`
+and `GlobalChangedEventArgs`, `RuleMatcher.FindGlobal`, the *ALWAYS VISIBLE* pane and its drop
+target, the pin/unpin menu items, and `GlobalWindowTests`. `state.json` is back to
+`Tasks` / `ActiveTaskId` / `Settings`, so a file written while the feature existed simply loses the
+`GlobalWindows` property on the next save rather than failing to load.
 
-Consequences worth knowing:
+The design note is worth keeping even though the code is gone: the reason a pin could never be
+hidden was **structural, not a rule** — `SwitchPlan.Compute` builds its hide set by walking
+`Tasks`, and pins lived outside that list. Anything similar attempted later should get that
+property the same way rather than by checking a flag at each hide site.
 
-- A pin carries a re-attach rule like any assignment, so it survives a restart. `RuleMatcher`
-  checks pins **before** tasks: a window the user pinned must not be claimed by a task rule that
-  also matches it, or the next switch would hide the very window pinning exists to keep on screen.
-- Pinning a currently-hidden window shows it first, reusing the guard `UnassignWindow` already had.
-  Both operations move a window somewhere no switch plan reaches, and doing that to a hidden window
-  would strand it.
-- Unpinning removes the rule as well as the binding, or the window would silently re-pin itself the
-  next time it appeared — the same trap task 04's orphaned-rule fix taught us to test for.
-
-UI: an *ALWAYS VISIBLE* strip under the task list, always present so it can teach the feature and
-be dropped onto while empty; plus *Pin as always visible* / *Unpin* on the window row menu.
+What remains for "keep this window on screen": leave it unassigned. Unassigned windows are in no
+switch plan and so stay visible in every task; the only thing pinning added on top was a durable
+re-attach rule to reclaim the window after a restart.
 
 ### C and D. Rule editing and settings
 
@@ -178,12 +180,16 @@ monitor**, so the genuine disconnect/reconnect check is still the user's.
 
 ### Verified live (my smoke test, throwaway windows)
 
+Everything below still applies to the shipped code, except the first three rows, which measured
+§ B before it was cut — kept because they are the evidence that it worked, not a promise about the
+current build.
+
 | Check | Observed |
 | --- | --- |
-| Pinned window through `Ctrl+Alt+1`, `Ctrl+Alt+2`, show-all | visible at every step |
-| Task windows across the same switches | swapped correctly (A hidden ⇄ B hidden) |
-| Pin in the journal, ever | never — 0/4 samples |
-| Pin re-attaches after a restart by its own rule | yes, into *ALWAYS VISIBLE* |
+| *(cut)* Pinned window through two switches and show-all | visible at every step |
+| *(cut)* Pin in the journal, ever | never — 0/4 samples |
+| *(cut)* Pin re-attaches after a restart by its own rule | yes |
+| Task windows across two hotkey switches | swapped correctly (A hidden ⇄ B hidden) |
 | Rebind `Ctrl+Alt+1` → `Ctrl+Alt+F1` in the dialog | keypress captured; `state.json` updated |
 | Old combination afterwards | dead |
 | New combination afterwards | switches, and survives a restart |
@@ -194,12 +200,14 @@ monitor**, so the genuine disconnect/reconnect check is still the user's.
 
 ### Build, tests, format
 
+Figures are for the shipped code, i.e. after § B was removed.
+
 - `dotnet build HydraWin.sln` — **0 warnings, 0 errors**. Six Sonar findings came up during the
   work (S3267, S3358, S6580, S2699 and friends) and were all fixed in code; nothing was suppressed.
-- `dotnet test --solution HydraWin.sln` — **261/261 passed** (224 before; 37 new across
-  `GlobalWindowTests`, `RulePreviewTests`, `AppLogTests` and `HotkeyBindingDisplayTests`).
-  `JsonStoreTests` needed one edit: it asserts `state.json`'s exact property list, which now
-  includes `GlobalWindows`.
+- `dotnet test --solution HydraWin.sln` — **253/253 passed** (224 before; 29 net new across
+  `RulePreviewTests`, `AppLogTests` and `HotkeyBindingDisplayTests`). It peaked at 261 with § B's
+  8-test `GlobalWindowTests`, which went with the feature. `JsonStoreTests` is back to asserting
+  `state.json`'s original property list.
 - `dotnet format --verify-no-changes` — exit 0.
 
 ### Files
@@ -209,7 +217,7 @@ monitor**, so the genuine disconnect/reconnect check is still the user's.
 `src/HydraWin.App/Views/RuleEditorWindow.xaml` + `.cs`,
 `src/HydraWin.App/ViewModels/SettingsViewModel.cs`, `HotkeyBindingViewModel.cs`,
 `NotificationRuleViewModel.cs`, `RuleEditorViewModel.cs`;
-`tests/HydraWin.Core.Tests/GlobalWindowTests.cs`, `RulePreviewTests.cs`, `AppLogTests.cs`,
+`tests/HydraWin.Core.Tests/RulePreviewTests.cs`, `AppLogTests.cs`,
 `HotkeyBindingDisplayTests.cs`.
 
 **Modified** — Core: `Workspaces/WorkspaceState.cs`, `WorkspaceService.cs`, `RuleMatcher.cs`,
@@ -219,10 +227,12 @@ App: `App.xaml` + `App.xaml.cs`, `MainWindow.xaml` + `.xaml.cs`, `ViewModels/Mai
 `Services/TrayIcon.cs`, `Services/HotkeyService.cs`. Tests: `JsonStoreTests.cs`.
 Docs: `tasks/initial_build/10_hardening_polish.md`, `08_tray_and_hotkeys.md`, `_status.md`.
 
-**Deleted** — none. `RestoreService` is deliberately unchanged: see the monitor result above.
+**Deleted** — `tests/HydraWin.Core.Tests/GlobalWindowTests.cs`, with § B. `RestoreService` is
+deliberately unchanged: see the monitor result above.
 
 ### Left to the user
 
 § Verification 1 (elevated Notepad is absent and the picker says why), the multi-monitor
-disconnect/reconnect check, and the acceptance pass over the two new dialogs.
+disconnect/reconnect check, and the acceptance pass over the two new dialogs. § Verification 2 no
+longer applies.
 `%APPDATA%\HydraWin` has been reset and the scratch windows closed.

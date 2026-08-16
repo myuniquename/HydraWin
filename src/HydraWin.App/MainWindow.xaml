@@ -39,8 +39,6 @@
                         <MenuItem Header="_Focus" Click="OnFocusWindowClick" />
                         <Separator />
                         <MenuItem Header="_Unassign" Tag="Unassign" Click="OnUnassignWindowClick" />
-                        <MenuItem Header="_Pin as always visible" Tag="Pin"
-                                  Click="OnPinWindowClick" />
                         <MenuItem Header="_Move to" Tag="MoveTo" />
                         <Separator />
                         <MenuItem Header="_Edit re-attach rule…" Tag="EditRule"
@@ -276,47 +274,6 @@
             <DockPanel Grid.Column="0">
                 <TextBlock DockPanel.Dock="Top" Text="TASKS" FontSize="10" FontWeight="Bold"
                            Opacity="0.5" Margin="2,0,0,6" />
-
-                <!--
-                    Pinned windows. Slim and always present, because an empty section that only
-                    appears once you have used the feature cannot be the thing that teaches you
-                    the feature exists — and it has to be droppable while empty.
-                -->
-                <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-                    <TextBlock DockPanel.Dock="Top" Text="ALWAYS VISIBLE" FontSize="10"
-                               FontWeight="Bold" Opacity="0.5" Margin="2,0,0,4" />
-
-                    <Border x:Name="GlobalPane" Tag="GlobalPane" AllowDrop="True"
-                            Background="#FAFBFC" BorderBrush="#E1E5EA" BorderThickness="1"
-                            CornerRadius="4" Padding="4" MinHeight="46" MaxHeight="150"
-                            PreviewMouseLeftButtonDown="OnPaneMouseDown"
-                            PreviewMouseMove="OnPaneMouseMove"
-                            DragOver="OnGlobalDragOver" DragLeave="OnDragLeave"
-                            Drop="OnGlobalDrop">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled">
-                            <Grid>
-                                <TextBlock Opacity="0.45" Margin="4,6" TextWrapping="Wrap"
-                                           FontSize="11"
-                                           Text="Drop a window here to keep it on screen in every task — a player, a clock, a chat window.">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Globals.Count}" Value="0">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-
-                                <ItemsControl ItemsSource="{Binding Globals}"
-                                              ItemTemplate="{StaticResource WindowRow}" />
-                            </Grid>
-                        </ScrollViewer>
-                    </Border>
-                </DockPanel>
 
                 <!-- The whole pane is the drop surface, so a task dragged past the last row still
                      lands somewhere sensible. -->

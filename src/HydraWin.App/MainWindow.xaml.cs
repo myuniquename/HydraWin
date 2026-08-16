@@ -423,9 +423,8 @@ public partial class MainWindow : Window
         e.Handled = true;
         e.Effects = DragDropEffects.None;
 
-        // Only a window that belongs to a task or is pinned has anything to gain from being
-        // dropped here; dragging this pane's own rows back into it would be a no-op.
-        if (WindowFrom(e.Data) is WindowViewModel window && viewModel.IsAssigned(window))
+        // Only a window that belongs to a task has anything to gain from being dropped here.
+        if (WindowFrom(e.Data) is WindowViewModel window && viewModel.TaskOf(window) is not null)
         {
             e.Effects = DragDropEffects.Move;
             indicator.Highlight(UnassignedPane);
@@ -441,7 +440,7 @@ public partial class MainWindow : Window
         indicator.Clear();
         e.Handled = true;
 
-        if (WindowFrom(e.Data) is WindowViewModel window && viewModel.IsAssigned(window))
+        if (WindowFrom(e.Data) is WindowViewModel window && viewModel.TaskOf(window) is not null)
         {
             viewModel.UnassignWindowCommand.Execute(window);
         }
@@ -516,22 +515,14 @@ public partial class MainWindow : Window
 
         menuWindow = window;
         TaskViewModel? owner = viewModel.TaskOf(window);
-        bool pinned = viewModel.IsPinned(window);
 
         foreach (MenuItem item in menu.Items.OfType<MenuItem>())
         {
             switch (item.Tag)
             {
                 case "Unassign":
-                    // Nothing to unassign it from unless it is in a task or pinned.
-                    item.Header = pinned ? "Un_pin" : "_Unassign";
-                    item.Visibility = owner is null && !pinned
-                        ? Visibility.Collapsed
-                        : Visibility.Visible;
-                    break;
-
-                case "Pin":
-                    item.Visibility = pinned ? Visibility.Collapsed : Visibility.Visible;
+                    // Nothing to unassign it from.
+                    item.Visibility = owner is null ? Visibility.Collapsed : Visibility.Visible;
                     break;
 
                 case "MoveTo":
@@ -540,9 +531,7 @@ public partial class MainWindow : Window
 
                 case "EditRule":
                     // The rule is part of an assignment; a loose window has none to edit.
-                    item.Visibility = owner is null && !pinned
-                        ? Visibility.Collapsed
-                        : Visibility.Visible;
+                    item.Visibility = owner is null ? Visibility.Collapsed : Visibility.Visible;
                     break;
 
                 default:
@@ -569,36 +558,6 @@ public partial class MainWindow : Window
         item.IsEnabled = item.Items.Count > 0;
     }
 
-    private void OnGlobalDragOver(object sender, DragEventArgs e)
-    {
-        ArgumentNullException.ThrowIfNull(e);
-        e.Handled = true;
-        e.Effects = DragDropEffects.None;
-
-        // Only a window that is not already pinned has anywhere to go here.
-        if (WindowFrom(e.Data) is WindowViewModel window && !viewModel.IsPinned(window))
-        {
-            e.Effects = DragDropEffects.Move;
-            indicator.Highlight(GlobalPane);
-        }
-        else
-        {
-            indicator.Clear();
-        }
-    }
-
-    private void OnGlobalDrop(object sender, DragEventArgs e)
-    {
-        ArgumentNullException.ThrowIfNull(e);
-        indicator.Clear();
-        e.Handled = true;
-
-        if (WindowFrom(e.Data) is WindowViewModel window)
-        {
-            viewModel.PinGlobalCommand.Execute(window);
-        }
-    }
-
     private void OnTaskMenuOpened(object sender, RoutedEventArgs e) =>
         menuTask = sender is ContextMenu { PlacementTarget: FrameworkElement target }
             ? target.DataContext as TaskViewModel
@@ -609,9 +568,6 @@ public partial class MainWindow : Window
 
     private void OnUnassignWindowClick(object sender, RoutedEventArgs e) =>
         viewModel.UnassignWindowCommand.Execute(menuWindow);
-
-    private void OnPinWindowClick(object sender, RoutedEventArgs e) =>
-        viewModel.PinGlobalCommand.Execute(menuWindow);
 
     /// <summary>Opens the re-attach rule editor for the window the menu was opened on.</summary>
     private void OnEditRuleClick(object sender, RoutedEventArgs e)

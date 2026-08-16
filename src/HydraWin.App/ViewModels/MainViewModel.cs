@@ -115,7 +115,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         workspaces.WindowAssigned += (_, _) => Rebuild();
         workspaces.WindowUnassigned += (_, _) => Rebuild();
         workspaces.WindowReattached += OnWindowReattached;
-        workspaces.GlobalsChanged += OnGlobalsChanged;
 
         store.CorruptFileQuarantined += (_, path) =>
             Say($"state.json was corrupt — set aside as {System.IO.Path.GetFileName(path)}");
@@ -328,17 +327,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// why the pane says so.
     /// </summary>
     public ObservableCollection<WindowViewModel> Unassigned { get; } = [];
-
-    /// <summary>
-    /// Windows the user pinned to stay on screen in every task — a player, a clock, a chat window.
-    /// </summary>
-    /// <remarks>
-    /// Unassigned windows are also never hidden, so on the surface these look the same. The
-    /// difference is intent, and it survives a restart: a pin carries a re-attach rule, so the
-    /// window is claimed again when it reopens instead of drifting back into the unassigned list
-    /// where some task's rule might take it.
-    /// </remarks>
-    public ObservableCollection<WindowViewModel> Globals { get; } = [];
 
     /// <summary>
     /// Asks the user to confirm deleting a task. Set by the view; the wording matters, so it lives
@@ -578,7 +566,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ => $"Could not add “{window}” — that task no longer exists.",
     };
 
-    /// <summary>Removes a window from its task or its pin; it stays visible in every task after.</summary>
+    /// <summary>Removes a window from its task; it stays visible in every task thereafter.</summary>
     [RelayCommand]
     public void UnassignWindow(WindowViewModel? window)
     {
@@ -587,61 +575,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        bool wasPinned = workspaces.IsGlobal(window.Hwnd);
-        Unhide(window);
+        // A window that is currently hidden must come back before it is let go of, or it would be
+        // stranded: unassigned windows are not in any switch plan, so nothing would ever show it.
+        if (hiddenWindows.Contains(window.Hwnd))
+        {
+            switchEngine.ShowAllTasks();
+            SyncHiddenFlags();
+        }
+
         workspaces.UnassignWindow(window.Hwnd);
-
-        Say(wasPinned
-            ? $"“{window.DisplayTitle}” is no longer pinned."
-            : $"“{window.DisplayTitle}” is unassigned and stays visible in every task.");
-    }
-
-    /// <summary>
-    /// Pins a window to stay visible in every task, taking it out of whatever task held it.
-    /// </summary>
-    [RelayCommand]
-    public void PinGlobal(WindowViewModel? window)
-    {
-        if (window is null || workspaces.IsGlobal(window.Hwnd))
-        {
-            return;
-        }
-
-        Unhide(window);
-        workspaces.PinGlobal(window.Source);
-        Say($"“{window.DisplayTitle}” is pinned and stays visible in every task.");
-    }
-
-    /// <summary>Whether a window is pinned always-visible.</summary>
-    public bool IsPinned(WindowViewModel window)
-    {
-        ArgumentNullException.ThrowIfNull(window);
-        return workspaces.IsGlobal(window.Hwnd);
-    }
-
-    /// <summary>Whether a window belongs to a task or a pin, rather than being loose.</summary>
-    public bool IsAssigned(WindowViewModel window)
-    {
-        ArgumentNullException.ThrowIfNull(window);
-        return workspaces.IsBound(window.Hwnd);
-    }
-
-    /// <summary>
-    /// Brings a window back on screen before it leaves the switch machinery's care.
-    /// </summary>
-    /// <remarks>
-    /// Both unassigning and pinning move a window somewhere no switch plan reaches. Doing that to
-    /// a window that is currently hidden would strand it: nothing left would ever show it again.
-    /// </remarks>
-    private void Unhide(WindowViewModel window)
-    {
-        if (!hiddenWindows.Contains(window.Hwnd))
-        {
-            return;
-        }
-
-        switchEngine.ShowAllTasks();
-        SyncHiddenFlags();
+        Say($"“{window.DisplayTitle}” is unassigned and stays visible in every task.");
     }
 
     /// <summary>Moves a task to a new position in the list.</summary>
@@ -797,17 +740,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
 
             Tasks.Add(row);
-        }
-
-        Globals.Clear();
-        foreach (WindowAssignment pin in workspaces.GlobalWindows)
-        {
-            if (pin.BoundHwnd is nint hwnd
-                && windowsByHwnd.TryGetValue(hwnd, out WindowViewModel? pinned))
-            {
-                pinned.IsUnmanageable = pin.Unmanageable;
-                Globals.Add(pinned);
-            }
         }
 
         Unassigned.Clear();
@@ -1017,20 +949,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Rebuild();
         string window = e.Window?.Title ?? e.Assignment.Rule.TitlePattern;
         Say($"Re-attached “{window}” to “{e.Task.Name}”.");
-    }
-
-    /// <summary>
-    /// The always-visible list changed. Only a rule re-claiming a reopened window is worth saying
-    /// out loud; pinning and unpinning already say so from the command that did it.
-    /// </summary>
-    private void OnGlobalsChanged(object? sender, GlobalChangedEventArgs e)
-    {
-        Rebuild();
-
-        if (e.Window is not null)
-        {
-            Say($"“{e.Window.Title}” is pinned — it stays visible in every task.");
-        }
     }
 
     /// <summary>
