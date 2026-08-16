@@ -26,6 +26,9 @@ internal sealed class FakeWindowApi : IWindowApi
     /// <summary>Whichever handle <see cref="TryFocus"/> last landed on.</summary>
     internal nint FocusedWindow { get; private set; }
 
+    /// <summary>Handles brought to the front by <see cref="Raise"/>, in order.</summary>
+    internal List<nint> RaisedWindows { get; } = [];
+
     /// <summary>Runs at the start of every <see cref="Hide"/> — used to observe ordering.</summary>
     internal Action<nint>? OnHide { get; set; }
 
@@ -116,6 +119,12 @@ internal sealed class FakeWindowApi : IWindowApi
 
         FocusedWindow = hwnd;
         return true;
+    }
+
+    public void Raise(nint hwnd)
+    {
+        Calls.Add($"Raise(0x{hwnd:X})");
+        RaisedWindows.Add(hwnd);
     }
 
     public ShowWindowResult Show(nint hwnd)

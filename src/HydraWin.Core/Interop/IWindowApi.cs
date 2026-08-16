@@ -53,4 +53,10 @@ public interface IWindowApi
     /// while HydraWin is itself the foreground process — see the implementation's remarks.
     /// </summary>
     bool TryFocus(nint hwnd);
+
+    /// <summary>
+    /// Brings a window to the front of the z-order without activating it, so the keyboard stays
+    /// where it is. Used when the switch was driven from HydraWin's own UI.
+    /// </summary>
+    void Raise(nint hwnd);
 }

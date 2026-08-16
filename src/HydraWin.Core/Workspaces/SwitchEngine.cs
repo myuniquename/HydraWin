@@ -105,7 +105,22 @@ public sealed class SwitchEngine
     /// Hides every other task's windows and brings this task's back. Idempotent: switching to the
     /// task that is already active just re-asserts visibility and focus.
     /// </summary>
-    public SwitchSummary SwitchTo(Guid taskId)
+    /// <param name="taskId">The task to switch to.</param>
+    /// <param name="focusTarget">
+    /// Whether to move the keyboard to the task's last-active window.
+    /// <para>
+    /// True for a switch the user made from outside HydraWin — task 08's hotkeys and the tray —
+    /// where the point is to land in the task and start working, and for the <em>Focus</em>
+    /// command, which names a window explicitly.
+    /// </para>
+    /// <para>
+    /// False when the switch came from clicking inside HydraWin's own window. The user is driving
+    /// the panel, and taking the keyboard away from it would send their next key press — Del, in
+    /// particular — to whichever app was just raised. The task's windows are still brought to the
+    /// front, they simply are not activated.
+    /// </para>
+    /// </param>
+    public SwitchSummary SwitchTo(Guid taskId, bool focusTarget = true)
     {
         HydraWinTask? target = workspaces.FindTask(taskId);
         if (target is null)
@@ -118,7 +133,14 @@ public sealed class SwitchEngine
         (int hiddenCount, int unmanageable) = HideAll(plan.ToHide);
         (int shown, int stale) = ShowAll(plan.ToShow);
 
-        FocusTarget(target, plan.ToShow);
+        if (focusTarget)
+        {
+            FocusTarget(target, plan.ToShow);
+        }
+        else
+        {
+            RaiseTarget(target);
+        }
 
         workspaces.SetActiveTask(taskId);
 
@@ -374,6 +396,31 @@ public sealed class SwitchEngine
         }
 
         return (shown, stale);
+    }
+
+    /// <summary>
+    /// Brings the task's windows to the front without taking the keyboard.
+    /// </summary>
+    /// <remarks>
+    /// Raised in reverse order so the task's last-active window ends up on top — the same window
+    /// <see cref="FocusTarget"/> would have chosen, just not activated.
+    /// </remarks>
+    private void RaiseTarget(HydraWinTask target)
+    {
+        List<nint> handles = [.. target.BoundAssignments
+            .Where(a => a.BoundHwnd is not null)
+            .Select(a => a.BoundHwnd!.Value)];
+
+        // Whichever window the user was last in belongs on top of its siblings.
+        if (target.LastActiveHwnd is nint last && handles.Remove(last))
+        {
+            handles.Add(last);
+        }
+
+        foreach (nint hwnd in handles)
+        {
+            windowApi.Raise(hwnd);
+        }
     }
 
     /// <summary>

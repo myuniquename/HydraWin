@@ -36,6 +36,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly SwitchEngine switchEngine;
     private readonly WindowIconCache icons;
     private readonly Dictionary<nint, WindowViewModel> windowsByHwnd = [];
+    private Guid? pendingRenameTaskId;
+    private bool rebuildDeferred;
     private bool disposed;
 
     public MainViewModel(RecoveryJournal journal, RestoreService restoreService)
@@ -170,17 +172,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             + ".");
 
     /// <summary>Creates a task and opens it for naming straight away.</summary>
+    /// <remarks>
+    /// The new task's id is remembered rather than its row: creating a task raises
+    /// <c>TasksChanged</c>, so a rebuild has already replaced every row by the time this returns.
+    /// <see cref="Rebuild"/> applies the flag by construction, which holds however many rebuilds
+    /// happen in between.
+    /// </remarks>
     [RelayCommand]
     public void CreateTask()
     {
+        pendingRenameTaskId = null;
         HydraWinTask task = workspaces.CreateTask(NextTaskName());
-        Rebuild();
 
-        TaskViewModel? row = Tasks.FirstOrDefault(t => t.Id == task.Id);
-        if (row is not null)
-        {
-            row.IsRenaming = true;
-        }
+        pendingRenameTaskId = task.Id;
+        Rebuild();
     }
 
     /// <summary>Commits an inline rename.</summary>
@@ -193,6 +198,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         task.IsRenaming = false;
+        pendingRenameTaskId = null;
+
         string name = task.Name.Trim();
         if (name.Length == 0)
         {
@@ -203,15 +210,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         workspaces.RenameTask(task.Id, name);
         UpdateTitle();
+        Rebuild();
     }
 
     /// <summary>
-    /// Deletes a task after confirmation, un-hiding its windows first. Never closes a window.
+    /// Deletes a task, un-hiding its windows first. Never closes a window.
     /// </summary>
+    /// <remarks>
+    /// Confirmation is asked for only when the task actually holds windows. The dialog exists to
+    /// say what becomes of them; with none open it has nothing to tell the user and only costs
+    /// them a keystroke.
+    /// </remarks>
     [RelayCommand]
     public void DeleteTask(TaskViewModel? task)
     {
-        if (task is null || ConfirmDelete?.Invoke(task) == false)
+        if (task is null)
+        {
+            return;
+        }
+
+        if (task.WindowCount > 0 && ConfirmDelete?.Invoke(task) == false)
         {
             return;
         }
@@ -219,17 +237,46 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         IReadOnlyList<WindowAssignment> orphaned = switchEngine.DeleteTask(task.Id);
         SyncHiddenFlags();
         Rebuild();
-        Say($"Deleted “{task.Name}”. {orphaned.Count} window(s) returned to Unassigned, "
-            + "none closed.");
+
+        Say(orphaned.Count == 0
+            ? $"Deleted “{task.Name}”."
+            : $"Deleted “{task.Name}”. {orphaned.Count} window(s) returned to Unassigned, "
+                + "none closed.");
+    }
+
+    /// <summary>
+    /// Deletes whichever task is currently switched to. Bound to the Del key.
+    /// </summary>
+    /// <remarks>
+    /// The list has no selection — clicking a row switches to it — so the active task, which the
+    /// accent border already makes unmistakable, is the one the key acts on.
+    /// </remarks>
+    [RelayCommand]
+    public void DeleteActiveTask()
+    {
+        TaskViewModel? active = Tasks.FirstOrDefault(t => t.IsActive);
+        if (active is null)
+        {
+            Say("No task is active — click one first, or use its right-click menu.");
+            return;
+        }
+
+        DeleteTask(active);
     }
 
     /// <summary>Switches to a task: hides every other task's windows and restores this one's.</summary>
+    /// <remarks>
+    /// The keyboard deliberately stays with HydraWin. This is the click-in-the-panel path, so the
+    /// user is still driving the panel — handing focus to the task's window would send their next
+    /// key press, Del above all, to that app instead. The windows are raised, not activated. Task
+    /// 08's hotkeys will switch <em>with</em> focus, because there the intent is the opposite.
+    /// </remarks>
     [RelayCommand]
     public void SwitchTo(TaskViewModel? task)
     {
         if (task is not null)
         {
-            switchEngine.SwitchTo(task.Id);
+            switchEngine.SwitchTo(task.Id, focusTarget: false);
         }
     }
 
@@ -394,6 +441,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             RenameTask(task);
         }
+
+        FlushDeferredRebuild();
+    }
+
+    /// <summary>
+    /// Runs the rebuild that was held back while a name was being typed.
+    /// </summary>
+    private void FlushDeferredRebuild()
+    {
+        if (rebuildDeferred && !Tasks.Any(t => t.IsRenaming))
+        {
+            Rebuild();
+        }
     }
 
     /// <summary>Abandons an inline rename, putting the stored name back.</summary>
@@ -402,6 +462,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (task is not null)
         {
             task.IsRenaming = false;
+            pendingRenameTaskId = null;
 
             // Name was edited in place, so the model is the only copy of the old value.
             Rebuild();
@@ -452,10 +513,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void Rebuild()
     {
-        // Transient row state has to survive the rebuild. Creating a task raises TasksChanged
-        // through the synchronization context, so the rebuild it triggers lands *after* the
-        // command has already put the new row into rename mode — without this, the rename box
-        // appeared and vanished in the same instant.
+        // A rebuild clears and re-adds every row, which regenerates the item containers and
+        // destroys the open rename box — focus, caret and half-typed name with it. Windows appear
+        // and disappear constantly, so without this a name could not be typed in peace. The
+        // deferred rebuild runs the moment the rename is committed or abandoned.
+        if (Tasks.Any(t => t.IsRenaming))
+        {
+            rebuildDeferred = true;
+            return;
+        }
+
+        rebuildDeferred = false;
+
+        // Transient row state has to survive the rebuild.
         Dictionary<Guid, (bool Expanded, bool Renaming)> rowState =
             Tasks.ToDictionary(t => t.Id, t => (t.IsExpanded, t.IsRenaming));
         Guid? active = workspaces.State.ActiveTaskId;
@@ -474,7 +544,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             {
                 IsActive = task.Id == active,
                 IsExpanded = !known || previous.Expanded,
-                IsRenaming = known && previous.Renaming,
+                IsRenaming = (known && previous.Renaming) || task.Id == pendingRenameTaskId,
             };
 
             foreach (WindowAssignment assignment in task.Assignments)

@@ -165,6 +165,7 @@
                                  Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                  VerticalAlignment="Center" Padding="2,0"
                                  IsVisibleChanged="OnRenameBoxVisibleChanged"
+                                 Loaded="OnRenameBoxReady"
                                  KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
                                  Visibility="{Binding IsRenaming,
                                                       Converter={StaticResource BoolToVisibility}}" />

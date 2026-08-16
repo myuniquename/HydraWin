@@ -503,6 +503,18 @@ internal static partial class NativeMethods
         return GetForegroundWindowCore() == hwnd;
     }
 
+    /// <summary>
+    /// Brings a window to the front of the z-order <em>without</em> activating it.
+    /// </summary>
+    /// <remarks>
+    /// The difference from <see cref="TryFocus"/> is the whole point: a switch started by clicking
+    /// inside HydraWin must leave the keyboard with HydraWin, or the very next key press goes to
+    /// the app that was just raised. The windows still come to the front, they just do not steal
+    /// focus.
+    /// </remarks>
+    internal static void Raise(nint hwnd) =>
+        SetWindowPosCore(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
     /// <summary>Hides a window and reports whether it actually went away.</summary>
     internal static ShowWindowResult Hide(nint hwnd) => Apply(hwnd, SW_HIDE, wantVisible: false);
 

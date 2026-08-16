@@ -273,6 +273,46 @@ public sealed class SwitchEngineTests : IDisposable
     }
 
     [Fact]
+    public void ASwitchDrivenFromTheUiRaisesTheWindowsButKeepsTheKeyboard()
+    {
+        // Clicking a task row must not hand the keyboard to the task's app, or the user's next
+        // key press — Del, to delete the task — would land in that app instead of HydraWin.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11);
+        TaskWith("Beta", 0x20);
+
+        engine.SwitchTo(alpha.Id, focusTarget: false);
+
+        Assert.Equal(0, api.FocusedWindow);
+        Assert.Equal([0x10, 0x11], api.RaisedWindows);
+        Assert.False(api.Get(0x20)!.Visible);
+    }
+
+    [Fact]
+    public void AUiSwitchRaisesTheLastActiveWindowLast()
+    {
+        // Last raised is topmost, so the window the user was in ends up in front of its siblings —
+        // the same one FocusTarget would have chosen, just not activated.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11);
+        engine.OnForegroundChanged(0x10);
+
+        engine.SwitchTo(alpha.Id, focusTarget: false);
+
+        Assert.Equal(0x10, api.RaisedWindows[^1]);
+    }
+
+    [Fact]
+    public void ASwitchStillFocusesByDefault()
+    {
+        // Task 08's hotkeys and the tray switch from outside the app, where landing in the task is
+        // exactly the point.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+
+        engine.SwitchTo(alpha.Id);
+
+        Assert.Equal(0x10, api.FocusedWindow);
+    }
+
+    [Fact]
     public void FocusingAWindowSwitchesToItsTaskFirst()
     {
         // The Focus command on a window of a non-active task: it is hidden right up until the

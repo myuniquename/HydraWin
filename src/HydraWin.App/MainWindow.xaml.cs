@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Threading;
 using HydraWin.App.ViewModels;
 using HydraWin.Core.Interop;
 using HydraWin.Core.Recovery;
@@ -70,6 +71,29 @@ public partial class MainWindow : Window
         }
 
         base.OnPreviewMouseDown(e);
+    }
+
+    /// <summary>
+    /// Del deletes the task currently switched to.
+    /// </summary>
+    /// <remarks>
+    /// Guarded twice. While a rename box has focus, Del is a text edit and must stay one — losing
+    /// the task instead of a character would be a nasty surprise. While a pick is running the
+    /// pointer is mid-gesture and the key belongs to that.
+    /// </remarks>
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (e.Key == Key.Delete
+            && !DragDropSupport.IsWithin<TextBox>(e.OriginalSource)
+            && picker?.IsPicking != true)
+        {
+            viewModel.DeleteActiveTaskCommand.Execute(null);
+            e.Handled = true;
+        }
+
+        base.OnPreviewKeyDown(e);
     }
 
     /// <summary>
@@ -502,15 +526,45 @@ public partial class MainWindow : Window
 
     private void OnRenameBoxVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.NewValue is true && sender is TextBox box)
+        if (e.NewValue is true)
         {
-            // The box is only just becoming visible, so focus has to wait for layout.
-            Dispatcher.BeginInvoke(() =>
-            {
-                box.Focus();
-                box.SelectAll();
-            });
+            FocusRenameBox(sender);
         }
+    }
+
+    /// <summary>
+    /// A box that is created <em>already</em> visible never raises <c>IsVisibleChanged</c>, which
+    /// is what happens when a rebuild regenerates a row that was mid-rename.
+    /// </summary>
+    private void OnRenameBoxReady(object sender, RoutedEventArgs e) => FocusRenameBox(sender);
+
+    /// <summary>
+    /// Puts the caret in the rename box and selects the name, so the first keystroke replaces it.
+    /// </summary>
+    /// <remarks>
+    /// The priority is the whole point. WPF runs <c>Normal</c> (9) <em>before</em> <c>Render</c> (7)
+    /// and <c>Loaded</c> (6), so the obvious <c>BeginInvoke(() =&gt; box.Focus())</c> fires before
+    /// the freshly generated container has been arranged: <c>Focus</c> finds an element that is not
+    /// ready, returns false, and says nothing. <c>Input</c> (5) runs after layout has settled.
+    /// </remarks>
+    private void FocusRenameBox(object sender)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            () =>
+            {
+                if (box.IsVisible
+                    && DragDropSupport.FindDataContext<TaskViewModel>(box) is { IsRenaming: true })
+                {
+                    Keyboard.Focus(box);
+                    box.SelectAll();
+                }
+            });
     }
 
     private void OnRenameBoxKeyDown(object sender, KeyEventArgs e)

@@ -357,13 +357,73 @@ there was no point at which it was the top-level window and it could not be poin
 is covered by the filter's unit tests and by the previous round's live proof that elevated windows
 are absent from the inventory — which is the same lookup the picker uses.
 
+### Task-row workflow (fourth feedback round)
+
+- **A new task's name box now takes focus with its text selected**, so the name can be typed
+  straight away. The code already called `Focus()` and `SelectAll()`; it queued them with
+  `Dispatcher.BeginInvoke` at the default `Normal` priority, and WPF runs **Normal (9) before
+  Render (7) and Loaded (6)** — so it tried to focus a container that had not been arranged,
+  `Focus()` returned `false`, and nothing said so. Dispatching at `Input` (5) fixes it. The same
+  helper is also wired to the box's `Loaded`, because a box created *already* visible never raises
+  `IsVisibleChanged`.
+- **A rebuild no longer interrupts typing.** `Rebuild()` clears and re-adds every row, which
+  regenerates the item containers and destroys the open rename box — focus, caret and half-typed
+  name with it — and it runs on every window appearing or disappearing. It now defers while a row
+  is renaming and flushes when the rename commits or is abandoned. The pane is a second or two
+  stale meanwhile, bounded by the fact that any click outside commits. Diffing `Tasks` in place is
+  the better long-term fix but a far larger change to a method drag-and-drop, expansion state and
+  the activity rollup all depend on.
+- `CreateTask` remembers the new task's **id** rather than its row, and `Rebuild` applies
+  `IsRenaming` by construction — the row object is already gone by the time the command returns,
+  since creating a task raises `TasksChanged`.
+- **Del deletes the active task.** The list has no selection — clicking a row switches to it — so
+  the accent-bordered active task is the target. Ignored while a `TextBox` has focus, or Del would
+  eat the task instead of a character mid-rename, and ignored while a pick is running.
+- **No confirmation dialog when the task holds no windows**, from the key and the context menu
+  alike. The dialog exists to say what becomes of the windows; with none open it has nothing to
+  say. The message drops the window clause too — *Deleted “Payments”.*
+
+#### Verified live
+
+| Check | Observed |
+| --- | --- |
+| Press *+ New task*, type without clicking | box read exactly `Payments`, not `Task 1Payments` — focused **and** the placeholder was selected |
+| Enter | committed; row shows the new name |
+| Del on an **empty** task | deleted at once, no dialog, *"Deleted “Payments”."* |
+| Del while renaming | deleted the selected text, task untouched, box still open |
+| Del on a task **with** a window | dialog appeared; *No* left the task alone, *Yes* deleted it and the window came back visible and unassigned |
+| Window appearing mid-typing | the typed text survived and the box stayed open; the new window appeared in the pane only after the rename committed, confirming the deferral and its flush |
+
+#### Focus now depends on how the switch was started
+
+The first cut of Del exposed a real gap: switching ended by focusing one of the task's windows, so
+HydraWin was no longer the foreground app and a Del pressed straight after clicking a row went to
+*that app* — at best doing nothing, at worst deleting something in it.
+
+`SwitchTo` therefore takes a `focusTarget` flag:
+
+- **False for a click inside HydraWin's own window.** The user is driving the panel, so the keyboard
+  stays with it. The task's windows are still brought to the front, through the new
+  `IWindowApi.Raise` (`SetWindowPos(HWND_TOP, SWP_NOACTIVATE)`) rather than `SetForegroundWindow`,
+  and they are raised in reverse order so the last-active one ends up on top — the same window
+  `FocusTarget` would have picked, just not activated.
+- **True everywhere else**, which is the default: the *Focus* command names a window explicitly, and
+  task 08's hotkeys and tray switch from outside the app, where landing in the task is the point.
+
+This supersedes task 06's "focus lands on the task's last-active window" for the click path only;
+`LastActiveHwnd` is still tracked and still decides which window ends up in front.
+
+Verified live: after clicking a task row the foreground window was still `HydraWin — Focus`, and Del
+pressed immediately afterwards — with no mouse input in between — raised the delete confirmation.
+
 ### Build, tests, format
 
 - `dotnet build HydraWin.sln` — **0 warnings, 0 errors**.
-- `dotnet test --solution HydraWin.sln` — **172/172 passed** (132 before; 40 new: 9 for
+- `dotnet test --solution HydraWin.sln` — **175/175 passed** (132 before; 43 new: 9 for
   `ClaudeCodeTitle`, 11 for reordering and the move fix, 3 for `SwitchToWindow`, 2 for the settings
   round-trip, 4 for the elevated-window filter clause, 7 for `AssignWindowToTask` — including the
-  journal-before-hide invariant on the new hide path — plus the existing suites re-run).
+  journal-before-hide invariant on the new hide path — 3 for raise-without-focus, plus the existing
+  suites re-run).
 - `dotnet format --verify-no-changes` — exit 0. All three `spikes/` projects still build.
 
 ### User walkthrough
