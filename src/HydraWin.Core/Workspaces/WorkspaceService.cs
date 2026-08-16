@@ -364,6 +364,19 @@ public sealed class WorkspaceService
         }
     }
 
+    /// <summary>Applies a change to the user preferences and persists it.</summary>
+    public void UpdateSettings(Action<SettingsModel> change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+
+        lock (gate)
+        {
+            change(State.Settings);
+        }
+
+        Persist();
+    }
+
     /// <summary>Forces any pending write to disk. Call on shutdown.</summary>
     public void Flush() => store.Flush();
 

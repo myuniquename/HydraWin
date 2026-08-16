@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using HydraWin.App.ViewModels;
 using HydraWin.Core.Recovery;
@@ -22,6 +23,7 @@ public partial class MainWindow : Window
     private Point dragOrigin;
     private object? pressedItem;
     private bool dragging;
+    private DragGhostAdorner? ghost;
     private WindowViewModel? menuWindow;
     private TaskViewModel? menuTask;
 
@@ -75,27 +77,47 @@ public partial class MainWindow : Window
         dragOrigin = e.GetPosition(this);
         pressedItem = DragDropSupport.FindDataContext<WindowViewModel>(e.OriginalSource)
             ?? (object?)DragDropSupport.FindDataContext<TaskViewModel>(e.OriginalSource);
+
+        // A window row has no click action to protect, so its drag begins on the press itself —
+        // which is the moment the user expects to see that they have picked something up. A task
+        // row cannot: a click there switches tasks, so it has to wait and see whether the pointer
+        // moves.
+        if (pressedItem is WindowViewModel)
+        {
+            BeginDrag((DependencyObject)sender, e.OriginalSource);
+        }
     }
 
     private void OnPaneMouseMove(object sender, MouseEventArgs e)
     {
-        if (dragging
-            || pressedItem is null
-            || e.LeftButton != MouseButtonState.Pressed
-            || !DragDropSupport.PastDragThreshold(dragOrigin, e.GetPosition(this)))
+        if (!dragging
+            && pressedItem is TaskViewModel
+            && e.LeftButton == MouseButtonState.Pressed
+            && DragDropSupport.PastDragThreshold(dragOrigin, e.GetPosition(this)))
         {
-            return;
+            BeginDrag((DependencyObject)sender, e.OriginalSource);
         }
+    }
 
-        var data = new DataObject();
+    /// <summary>
+    /// Runs one drag: builds the payload, raises the ghost, and blocks in WPF's modal drag loop
+    /// until the drop.
+    /// </summary>
+    private void BeginDrag(DependencyObject source, object? originalSource)
+    {
+        DataObject data = new();
+        string rowTag;
+
         switch (pressedItem)
         {
             case WindowViewModel window:
                 data.SetData(DragDropSupport.WindowFormat, (long)window.Hwnd);
+                rowTag = DragDropSupport.WindowRowTag;
                 break;
 
             case TaskViewModel task:
                 data.SetData(DragDropSupport.TaskFormat, task.Id);
+                rowTag = DragDropSupport.TaskRowTag;
                 break;
 
             default:
@@ -103,16 +125,53 @@ public partial class MainWindow : Window
         }
 
         dragging = true;
+        ShowGhost(DragDropSupport.FindRow(originalSource, rowTag));
+
         try
         {
-            DragDrop.DoDragDrop((DependencyObject)sender, data, DragDropEffects.Move);
+            DragDrop.DoDragDrop(source, data, DragDropEffects.Move);
         }
         finally
         {
+            HideGhost();
             indicator.Clear();
             pressedItem = null;
         }
     }
+
+    private void ShowGhost(FrameworkElement? row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        AdornerLayer? layer = AdornerLayer.GetAdornerLayer(RootPanel);
+        if (layer is null)
+        {
+            return;
+        }
+
+        ghost = new DragGhostAdorner(RootPanel, row);
+        ghost.MoveTo(Mouse.GetPosition(RootPanel));
+        layer.Add(ghost);
+    }
+
+    private void HideGhost()
+    {
+        if (ghost is not null)
+        {
+            AdornerLayer.GetAdornerLayer(RootPanel)?.Remove(ghost);
+            ghost = null;
+        }
+    }
+
+    /// <summary>
+    /// Keeps the ghost under the pointer. Handled at the window rather than on the panes so it
+    /// still tracks over the toolbar, the splitter and the gaps between drop targets.
+    /// </summary>
+    private void OnWindowDragOver(object sender, DragEventArgs e) =>
+        ghost?.MoveTo(e.GetPosition(RootPanel));
 
     /// <summary>
     /// A press that did not turn into a drag, on a task row rather than one of its windows, is the

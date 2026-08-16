@@ -108,8 +108,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Say($"state.json was corrupt — set aside as {System.IO.Path.GetFileName(path)}");
         store.SaveFailed += (_, ex) => Say($"could not save: {ex.Message}");
 
+        AlwaysOnTop = workspaces.State.Settings.AlwaysOnTop;
+
         Rebuild();
     }
+
+    partial void OnAlwaysOnTopChanged(bool value) =>
+        workspaces.UpdateSettings(settings => settings.AlwaysOnTop = value);
 
     /// <summary>The window title: <c>HydraWin — &lt;active task&gt;</c>, or just the app name.</summary>
     [ObservableProperty]
@@ -121,6 +126,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty]
     public partial string Status { get; set; } = "Ready.";
+
+    /// <summary>
+    /// Whether the manager window stays above other windows. Persisted, and on by default: a
+    /// switch ends by focusing one of the task's windows, which would otherwise cover the very
+    /// window the user clicks to switch again.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool AlwaysOnTop { get; set; }
 
     /// <summary>The tasks, in display order.</summary>
     public ObservableCollection<TaskViewModel> Tasks { get; } = [];

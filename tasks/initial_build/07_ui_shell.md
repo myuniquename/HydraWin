@@ -211,12 +211,52 @@ was reset before handover. Screenshots: `screenshots/07-task-table.png`,
 machine — that is the point of § F), and the `Unmanageable` / elevated-window path, which no window
 triggered; task 01's elevated Task Manager measurement remains the evidence for it.
 
+### Feedback round (user, after first hand-over)
+
+- **Drag feedback started too late.** There was no drag ghost at all — the only cue was the drop
+  cursor, which says a drag is happening but not what is being dragged, and shows nothing until the
+  pointer is over a valid target. Added `DragGhostAdorner`, a translucent copy of the row tracked
+  at window level so it keeps up over the toolbar, the splitter and the gaps between drop targets.
+  **Window rows now begin their drag on mouse-down**, since a window row has no click action to
+  protect. Task rows keep the threshold — a click there switches tasks, so starting on the press
+  would make every switch a drag.
+- **The manager was buried by its own switch.** Added `SettingsModel.AlwaysOnTop`, persisted, on by
+  default, with a *Stay on top* toolbar toggle. Deliberately not scoped to "only during a switch":
+  `SwitchTo` is synchronous, so a flag raised and lowered inside it never reaches a rendered frame.
+  What actually buries the window is the switch *ending* by focusing one of the task's windows.
+- **Dragging a live OS window into the list is not possible.** OLE drag-and-drop carries data, not
+  window handles, and Windows exposes no shell protocol for dragging a window. The idiom that would
+  work is a crosshair picker (drag onto any window to grab it), which is a new feature, not a fix.
+
+#### Verification of *Stay on top* (measured, not assumed)
+
+Ground truth was `WS_EX_TOPMOST` read off the real HWND, plus `WindowFromPoint` over a deliberate
+overlap — not the checkbox state.
+
+| Case | Observed |
+| --- | --- |
+| Fresh start, default | `exstyle=0x40108`, `WS_EX_TOPMOST=True`, with no harness involvement |
+| Rival window raised to `HWND_TOP` **and** activated | overlap point still returns HydraWin |
+| **After a switch** | foreground became `HW-TOPTEST - Google Chrome` — the task's window — yet the overlap point still returned HydraWin. This is the case the setting exists for |
+| Toggle off | `exstyle=0x40100`, `WS_EX_TOPMOST=False`; the *identical* `HWND_TOP` raise now wins the overlap point — the control that proves the ON result was real |
+| Persistence | `"AlwaysOnTop": false` written to `state.json`; still off after a restart; re-checking restores `true` |
+
+One harness trap worth recording: the first run showed `WS_EX_TOPMOST=True` only because the test
+driver's own "bring to front" helper used `HWND_TOPMOST`. That was measuring the harness, not the
+app. The helper was changed to `HWND_TOP` and the whole sequence re-run from a fresh start.
+
+Two small things this surfaced, neither fixed here:
+- While a task's inline rename box is open, that row will not accept a drop — a WPF `TextBox`
+  handles `DragOver`/`Drop` itself for text, so the payload never reaches the row.
+- If the rename box never receives keyboard focus, nothing commits it and it stays open; `Escape`
+  and lost-focus both assume it had focus.
+
 ### Build, tests, format
 
 - `dotnet build HydraWin.sln` — **0 warnings, 0 errors**.
-- `dotnet test --solution HydraWin.sln` — **159/159 passed** (132 before; 27 new: 9 for
-  `ClaudeCodeTitle`, 11 for reordering and the move fix, 3 for `SwitchToWindow`, plus the existing
-  suites re-run).
+- `dotnet test --solution HydraWin.sln` — **161/161 passed** (132 before; 29 new: 9 for
+  `ClaudeCodeTitle`, 11 for reordering and the move fix, 3 for `SwitchToWindow`, 2 for the settings
+  round-trip, plus the existing suites re-run).
 - `dotnet format --verify-no-changes` — exit 0. All three `spikes/` projects still build.
 
 ### User walkthrough
@@ -225,7 +265,8 @@ triggered; task 01's elevated Task Manager measurement remains the evidence for 
 
 ### Files
 
-**New** — `src/HydraWin.Core/Tracking/ClaudeCodeTitle.cs`, `src/HydraWin.Core/Interop/IIconSource.cs`,
+**New** — `src/HydraWin.App/Assets/hydrawin.svg` (app icon; task 08 still needs an `.ico` derived
+from it), `src/HydraWin.Core/Tracking/ClaudeCodeTitle.cs`, `src/HydraWin.Core/Interop/IIconSource.cs`,
 `src/HydraWin.Core/Interop/Win32IconSource.cs`, `src/HydraWin.App/Converters.cs`,
 `src/HydraWin.App/DragDropSupport.cs`, `src/HydraWin.App/Services/WindowIconCache.cs`,
 `src/HydraWin.App/ViewModels/TaskViewModel.cs`, `src/HydraWin.App/ViewModels/WindowViewModel.cs`,
@@ -233,10 +274,12 @@ triggered; task 01's elevated Task Manager measurement remains the evidence for 
 `tests/HydraWin.Core.Tests/TaskOrderingTests.cs`, and `tasks/initial_build/screenshots/` (3 files).
 
 **Modified** — `src/HydraWin.App/MainWindow.xaml`, `src/HydraWin.App/MainWindow.xaml.cs`,
-`src/HydraWin.App/ViewModels/MainViewModel.cs`, `src/HydraWin.Core/Interop/NativeMethods.cs`,
-`src/HydraWin.Core/Workspaces/ReattachRule.cs`, `src/HydraWin.Core/Workspaces/SwitchEngine.cs`,
+`src/HydraWin.App/ViewModels/MainViewModel.cs`, `src/HydraWin.App/DragDropSupport.cs`,
+`src/HydraWin.Core/Interop/NativeMethods.cs`, `src/HydraWin.Core/Workspaces/ReattachRule.cs`,
+`src/HydraWin.Core/Workspaces/SettingsModel.cs`, `src/HydraWin.Core/Workspaces/SwitchEngine.cs`,
 `src/HydraWin.Core/Workspaces/WorkspaceService.cs`,
-`tests/HydraWin.Core.Tests/SwitchEngineTests.cs`, `tasks/initial_build/07_ui_shell.md`,
+`tests/HydraWin.Core.Tests/SwitchEngineTests.cs`,
+`tests/HydraWin.Core.Tests/WorkspaceServiceTests.cs`, `tasks/initial_build/07_ui_shell.md`,
 `tasks/initial_build/_plan.md`.
 
 **Deleted** — none. `UnassignedListViewModel` was not needed: the unassigned pane is a plain

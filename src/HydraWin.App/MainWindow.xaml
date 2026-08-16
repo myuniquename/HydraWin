@@ -9,6 +9,8 @@
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="{Binding Title}" Height="600" Width="900"
         MinHeight="300" MinWidth="640"
+        Topmost="{Binding AlwaysOnTop}"
+        AllowDrop="True" PreviewDragOver="OnWindowDragOver"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
 
     <Window.Resources>
@@ -196,7 +198,7 @@
         </DataTemplate>
     </Window.Resources>
 
-    <DockPanel>
+    <DockPanel x:Name="RootPanel">
         <Border DockPanel.Dock="Top" Padding="8,6" Background="#F7F8FA"
                 BorderBrush="#E1E5EA" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal">
@@ -204,6 +206,9 @@
                 <Button Content="Show all" Command="{Binding ShowAllCommand}" Padding="10,3"
                         Margin="8,0,0,0"
                         ToolTip="Bring every hidden window back and leave no task active" />
+                <CheckBox Content="Stay on top" IsChecked="{Binding AlwaysOnTop}"
+                          VerticalAlignment="Center" Margin="16,0,0,0"
+                          ToolTip="Keep HydraWin above other windows, so a switch does not bury it" />
             </StackPanel>
         </Border>
 

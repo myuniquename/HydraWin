@@ -28,4 +28,16 @@ public sealed class SettingsModel
     /// Task 08 wires the tray <i>Exit</i> paths to it and task 10 exposes the toggle.
     /// </summary>
     public bool RestoreOnExit { get; set; } = true;
+
+    /// <summary>
+    /// Whether the manager window stays above other windows. Default on, because a switch ends by
+    /// focusing one of the task's windows — which would otherwise bury the very window the user
+    /// clicks to switch again.
+    /// </summary>
+    /// <remarks>
+    /// This cannot usefully be scoped to "only while switching": <c>SwitchTo</c> is synchronous, so
+    /// a flag raised and lowered inside it never reaches a frame. Task 10 puts it in the settings
+    /// UI alongside the rest.
+    /// </remarks>
+    public bool AlwaysOnTop { get; set; } = true;
 }

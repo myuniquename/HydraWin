@@ -159,6 +159,62 @@ internal sealed class DropIndicator
     }
 }
 
+/// <summary>
+/// A translucent copy of the row being dragged, following the pointer.
+/// </summary>
+/// <remarks>
+/// Without this the only feedback is the drop cursor, which says a drag is happening but not
+/// <em>what</em> is being dragged — and says nothing at all until the pointer is over a valid
+/// target.
+/// </remarks>
+internal sealed class DragGhostAdorner : Adorner
+{
+    /// <summary>Wide rows would swamp the pointer, so the ghost is clipped to this.</summary>
+    private const double GhostMaxWidth = 340;
+
+    private readonly Brush content;
+    private readonly Size size;
+    private Point position;
+
+    internal DragGhostAdorner(UIElement adornedElement, FrameworkElement source)
+        : base(adornedElement)
+    {
+        IsHitTestVisible = false;
+
+        content = new VisualBrush(source)
+        {
+            Stretch = Stretch.None,
+            AlignmentX = AlignmentX.Left,
+            AlignmentY = AlignmentY.Top,
+        };
+
+        size = new Size(Math.Min(source.ActualWidth, GhostMaxWidth), source.ActualHeight);
+    }
+
+    /// <summary>Moves the ghost to the pointer.</summary>
+    internal void MoveTo(Point point)
+    {
+        position = point;
+        InvalidateVisual();
+    }
+
+    protected override void OnRender(DrawingContext drawingContext)
+    {
+        ArgumentNullException.ThrowIfNull(drawingContext);
+        if (size.Width <= 0 || size.Height <= 0)
+        {
+            return;
+        }
+
+        // Offset so the ghost sits below and right of the pointer rather than under it.
+        var bounds = new Rect(new Point(position.X + 14, position.Y + 10), size);
+
+        drawingContext.PushOpacity(0.7);
+        drawingContext.DrawRectangle(content, null, bounds);
+        drawingContext.Pop();
+    }
+}
+
 /// <summary>An accent outline over the row that will receive the drop.</summary>
 internal sealed class HighlightAdorner : Adorner
 {

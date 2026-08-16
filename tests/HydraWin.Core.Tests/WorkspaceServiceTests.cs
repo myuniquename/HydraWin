@@ -220,4 +220,25 @@ public sealed class WorkspaceServiceTests : IDisposable
         Assert.False(assignment.IsBound);
         Assert.False(reopened.IsBound(0x10));
     }
+
+    [Fact]
+    public void StayOnTopDefaultsToOn()
+    {
+        // A switch ends by focusing one of the task's windows, so without this the manager is
+        // buried by the very act of using it.
+        Assert.True(service.State.Settings.AlwaysOnTop);
+    }
+
+    [Fact]
+    public void ChangingASettingSurvivesARestart()
+    {
+        service.UpdateSettings(settings => settings.AlwaysOnTop = false);
+        service.Flush();
+
+        using var reopenedStore = new WorkspaceStore(store.Path, TimeSpan.FromMinutes(5));
+        var reopened = new WorkspaceService(reopenedStore);
+
+        Assert.False(reopened.State.Settings.AlwaysOnTop);
+        Assert.True(reopened.State.Settings.RestoreOnExit);
+    }
 }
