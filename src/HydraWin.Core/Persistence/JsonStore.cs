@@ -18,6 +18,13 @@ internal static class JsonStoreOptions
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
+
+        // Without this the default encoder escapes anything outside a conservative ASCII set:
+        // task 08's "Control+Alt" becomes "Control+Alt", and a window title in Cyrillic or
+        // with an em dash turns into a wall of \uXXXX. The file is meant to be edited by a person,
+        // which that makes impossible. "Unsafe" here means unsafe to embed in HTML; this is a file
+        // on disk that is never rendered as markup.
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 }
 

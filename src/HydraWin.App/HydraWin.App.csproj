@@ -6,7 +6,13 @@
     <RootNamespace>HydraWin.App</RootNamespace>
     <AssemblyName>hydrawin</AssemblyName>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\hydrawin.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Also embedded, so the tray and the window can load it through a pack:// URI. -->
+    <Resource Include="Assets\hydrawin.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />

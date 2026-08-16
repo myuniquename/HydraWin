@@ -53,8 +53,52 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>The view model, for the tray menu and the hotkeys.</summary>
+    internal MainViewModel ViewModel => viewModel;
+
+    /// <summary>
+    /// Set by <see cref="App"/> when the app is genuinely exiting, so the close is not intercepted.
+    /// </summary>
+    internal bool ExitRequested { get; set; }
+
     /// <summary>Reports what startup recovery put back, without interrupting the user.</summary>
     public void ShowRecoveryNotice(RestoreSummary summary) => viewModel.ShowRecoveryNotice(summary);
+
+    /// <summary>Brings the window back from the tray.</summary>
+    internal void ShowFromTray()
+    {
+        Show();
+
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+    }
+
+    /// <summary>
+    /// Closing hides to the tray instead of exiting, unless the user turned that off or the exit
+    /// came from the tray menu.
+    /// </summary>
+    /// <remarks>
+    /// HydraWin is a companion: closing its window is not a request to stop managing windows, and
+    /// exiting is the one action that must un-hide everything. Making the close button do that by
+    /// accident would be the worst kind of surprise.
+    /// </remarks>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (!ExitRequested && viewModel.CloseToTray)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
+        base.OnClosing(e);
+    }
 
     /// <summary>
     /// Any press anywhere outside an open rename box commits it — a toolbar button, the start of a

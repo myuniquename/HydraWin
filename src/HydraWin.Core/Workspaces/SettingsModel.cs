@@ -40,4 +40,17 @@ public sealed class SettingsModel
     /// UI alongside the rest.
     /// </remarks>
     public bool AlwaysOnTop { get; set; } = true;
+
+    /// <summary>
+    /// Whether closing the manager window hides it to the tray instead of exiting. Default on:
+    /// HydraWin is a companion, and closing its window is not a request to stop managing windows.
+    /// The tray menu's <i>Exit</i> is how it actually stops.
+    /// </summary>
+    public bool CloseToTray { get; set; } = true;
+
+    /// <summary>
+    /// The global hotkeys. Seeded with <see cref="HotkeyBinding.Defaults"/> the first time, and
+    /// hand-editable thereafter; an entry that cannot be understood is skipped, not fatal.
+    /// </summary>
+    public List<HotkeyBinding> Hotkeys { get; set; } = [];
 }

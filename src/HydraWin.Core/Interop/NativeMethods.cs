@@ -97,6 +97,18 @@ public readonly record struct ShowWindowResult(bool Succeeded, int Win32Error);
 /// <param name="CancelRequested">Whether Escape is down — the pick is abandoned.</param>
 public readonly record struct PickerInput(bool ButtonHeld, bool CancelRequested);
 
+/// <summary>Win32 <c>MSG</c>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct Msg
+{
+    public nint Hwnd;
+    public uint Message;
+    public nint WParam;
+    public nint LParam;
+    public uint Time;
+    public Point Point;
+}
+
 /// <summary>
 /// The single home for every P/Invoke declaration in HydraWin. Nothing above
 /// <c>HydraWin.Core</c> may declare or call Win32 directly (see CLAUDE.md).
@@ -318,6 +330,24 @@ internal static partial class NativeMethods
         int cx,
         int cy,
         uint uFlags);
+
+    [LibraryImport("user32.dll", EntryPoint = "RegisterHotKey", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool RegisterHotKeyCore(nint hWnd, int id, uint fsModifiers, uint vk);
+
+    [LibraryImport("user32.dll", EntryPoint = "UnregisterHotKey", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool UnregisterHotKeyCore(nint hWnd, int id);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMessageW", SetLastError = true)]
+    private static partial int GetMessageCore(out Msg lpMsg, nint hWnd, uint filterMin, uint filterMax);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostThreadMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool PostThreadMessageCore(uint threadId, uint msg, nint wParam, nint lParam);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetCurrentThreadId")]
+    private static partial uint GetCurrentThreadIdCore();
 
     [LibraryImport("advapi32.dll", EntryPoint = "OpenProcessToken", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -768,6 +798,81 @@ internal static partial class NativeMethods
         {
             DestroyIconCore(hIcon);
         }
+    }
+
+    /// <summary>
+    /// Claims a global hotkey for the <em>calling thread</em>.
+    /// </summary>
+    /// <remarks>
+    /// The null window handle is the point. <c>RegisterHotKey</c> with no window posts
+    /// <c>WM_HOTKEY</c> to the calling thread's message queue instead of to a window, so the owner
+    /// needs no window class, no <c>WndProc</c> and no <c>HwndSource</c> — just a thread running
+    /// <see cref="WaitForHotkey"/>. That is what lets the hotkeys live off the UI thread cheaply,
+    /// and it is why the panic restore still works when that thread is wedged.
+    /// </remarks>
+    /// <returns><see langword="false"/> when another application already owns the combination.</returns>
+    internal static bool TryRegisterHotkey(int id, uint modifiers, uint virtualKey)
+    {
+        // MOD_NOREPEAT, always: every action behind a hotkey here is a command, and holding the
+        // combination down must not fire it forty times a second. Enforced at the boundary rather
+        // than trusted from callers.
+        const uint MOD_NOREPEAT = 0x4000;
+
+        if (virtualKey == 0 || (modifiers & ~MOD_NOREPEAT) == 0)
+        {
+            return false;
+        }
+
+        return RegisterHotKeyCore(0, id, modifiers | MOD_NOREPEAT, virtualKey);
+    }
+
+    /// <summary>
+    /// Releases every hotkey in the list and empties it. Must run on the registering thread.
+    /// </summary>
+    internal static void UnregisterHotkeys(List<int> ids)
+    {
+        foreach (int id in ids)
+        {
+            UnregisterHotKeyCore(0, id);
+        }
+
+        ids.Clear();
+    }
+
+    /// <summary>
+    /// Blocks until a hotkey fires or the loop is asked to stop.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> with the hotkey's id, or <see langword="false"/> when
+    /// <see cref="StopHotkeyLoop"/> has posted the quit message.
+    /// </returns>
+    internal static bool WaitForHotkey(out int id)
+    {
+        const uint WM_HOTKEY = 0x0312;
+
+        id = 0;
+
+        // GetMessage returns 0 for WM_QUIT and -1 for an error; either ends the loop.
+        while (GetMessageCore(out Msg message, 0, 0, 0) > 0)
+        {
+            if (message.Message == WM_HOTKEY)
+            {
+                id = (int)message.WParam;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The calling thread's id, so its message loop can be stopped later.</summary>
+    internal static uint CurrentThreadId() => GetCurrentThreadIdCore();
+
+    /// <summary>Ends a <see cref="WaitForHotkey"/> loop running on another thread.</summary>
+    internal static void StopHotkeyLoop(uint threadId)
+    {
+        const uint WM_QUIT = 0x0012;
+        PostThreadMessageCore(threadId, WM_QUIT, 0, 0);
     }
 
     /// <summary>Releases every hook in the list and empties it. Zero handles are skipped.</summary>

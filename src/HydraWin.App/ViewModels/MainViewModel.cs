@@ -111,8 +111,57 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         store.SaveFailed += (_, ex) => Say($"could not save: {ex.Message}");
 
         AlwaysOnTop = workspaces.State.Settings.AlwaysOnTop;
+        EnsureHotkeyDefaults();
 
         Rebuild();
+    }
+
+    /// <summary>The global hotkeys to register, seeded on first run and hand-editable after.</summary>
+    public IReadOnlyList<HotkeyBinding> Hotkeys => workspaces.State.Settings.Hotkeys;
+
+    /// <summary>Whether a clean exit restores every hidden window first.</summary>
+    public bool RestoreOnExit => workspaces.State.Settings.RestoreOnExit;
+
+    /// <summary>Whether closing the manager window hides it to the tray instead of exiting.</summary>
+    public bool CloseToTray
+    {
+        get => workspaces.State.Settings.CloseToTray;
+        set
+        {
+            workspaces.UpdateSettings(settings => settings.CloseToTray = value);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Switches to the task at a 1-based position, which is what the hotkeys and the tray menu
+    /// both address tasks by.
+    /// </summary>
+    /// <remarks>
+    /// Focus goes to the task's window here, unlike the click-in-the-panel path: a hotkey or a tray
+    /// click means the user is somewhere else entirely and wants to land in the task.
+    /// </remarks>
+    public void SwitchToOrder(int order)
+    {
+        HydraWinTask? task = workspaces.Tasks.FirstOrDefault(t => t.Order == order);
+        if (task is null)
+        {
+            Say($"No task at position {order}.");
+            return;
+        }
+
+        switchEngine.SwitchTo(task.Id);
+    }
+
+    /// <summary>Switches to a task from the tray, landing in it.</summary>
+    public void SwitchToFromTray(Guid taskId) => switchEngine.SwitchTo(taskId);
+
+    private void EnsureHotkeyDefaults()
+    {
+        if (workspaces.State.Settings.Hotkeys.Count == 0)
+        {
+            workspaces.UpdateSettings(settings => settings.Hotkeys = HotkeyBinding.Defaults());
+        }
     }
 
     partial void OnAlwaysOnTopChanged(bool value) =>
