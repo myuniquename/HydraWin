@@ -25,8 +25,13 @@ placements. Background windows that want attention raise a badge on their task r
 - **`SetForegroundWindow` only works when HydraWin is the foreground process** — which it is during
   a user-initiated switch. Do not add focus-stealing workarounds (`AttachThreadInput` tricks) for
   paths where the user didn't just click HydraWin.
-- **Elevated processes' windows cannot be hidden from a non-elevated HydraWin** (UIPI). They are
-  detected, marked in the UI, and skipped — never half-handled.
+- **Elevated processes' windows cannot be hidden from a non-elevated HydraWin** (UIPI). Since
+  task 07 they are **kept out of the inventory entirely** rather than listed and marked: a window
+  the app can never hide has no business being offered as something to put in a task. Detection is
+  `NativeMethods.IsProcessElevated`, and being unable to query the token counts as elevated —
+  guessing the other way would put an unmanageable window in front of the user. When HydraWin is
+  itself elevated the clause does not apply and such windows are ordinary.
+  `WindowAssignment.Unmanageable` stays as the runtime safety net for a hide that fails anyway.
 - **Both notification channels reach hidden windows** — task 01 measured this, contradicting the
   original assumption that a missing taskbar button would suppress flashes. `HSHELL_FLASH` is
   delivered for `SW_HIDE`-hidden windows (confirmed for real Teams messages and for a hidden

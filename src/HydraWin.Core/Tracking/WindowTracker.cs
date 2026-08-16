@@ -35,6 +35,13 @@ public sealed class WindowTracker : IDisposable
     private readonly int ownProcessId = Environment.ProcessId;
 
     /// <summary>
+    /// Whether HydraWin itself is elevated, read once: it cannot change while the process lives.
+    /// When it is not, elevated windows are filtered out entirely — UIPI would refuse the hide, so
+    /// listing them would only offer the user a window that can never be switched away.
+    /// </summary>
+    private readonly bool ownIsElevated = NativeMethods.IsProcessElevated(Environment.ProcessId);
+
+    /// <summary>
     /// The WinEvent callback, rooted for as long as this tracker lives. A delegate handed
     /// straight to <c>SetWinEventHook</c> — or held in a local — gets collected and the hook dies
     /// silently (repo gotcha). It is a readonly field assigned in the constructor precisely so
@@ -182,7 +189,7 @@ public sealed class WindowTracker : IDisposable
         foreach (nint hwnd in NativeMethods.EnumerateTopLevelWindows())
         {
             WindowFacts facts = WindowProbe.GetFacts(hwnd, hiddenWindows);
-            result.Add((hwnd, facts.Title, WindowFilter.Evaluate(in facts, ownProcessId)));
+            result.Add((hwnd, facts.Title, WindowFilter.Evaluate(in facts, ownProcessId, ownIsElevated)));
         }
 
         return result;
@@ -195,7 +202,7 @@ public sealed class WindowTracker : IDisposable
         foreach (nint hwnd in NativeMethods.EnumerateTopLevelWindows())
         {
             WindowFacts facts = WindowProbe.GetFacts(hwnd, hiddenWindows);
-            if (WindowFilter.IsTrackable(in facts, ownProcessId))
+            if (WindowFilter.IsTrackable(in facts, ownProcessId, ownIsElevated))
             {
                 current.Add(WindowProbe.CreateTrackedWindow(in facts));
             }
@@ -270,7 +277,7 @@ public sealed class WindowTracker : IDisposable
     private void ReEvaluate(nint hwnd)
     {
         WindowFacts facts = WindowProbe.GetFacts(hwnd, hiddenWindows);
-        bool trackable = WindowFilter.IsTrackable(in facts, ownProcessId);
+        bool trackable = WindowFilter.IsTrackable(in facts, ownProcessId, ownIsElevated);
 
         if (!trackable)
         {

@@ -312,6 +312,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>The row for a task id — how a drop turns its payload back into a task.</summary>
     public TaskViewModel? FindTask(Guid id) => Tasks.FirstOrDefault(t => t.Id == id);
 
+    /// <summary>
+    /// Commits any inline rename that is still open. Called whenever the user does something else
+    /// — presses a button, starts a drag, clicks another row.
+    /// </summary>
+    /// <remarks>
+    /// Lost focus alone is not enough: the rename box has to have <em>had</em> focus for that to
+    /// fire, and a click that never reaches it (or a drag begun elsewhere) would otherwise leave
+    /// the box open indefinitely.
+    /// </remarks>
+    public void CommitPendingRename()
+    {
+        foreach (TaskViewModel task in Tasks.Where(t => t.IsRenaming).ToList())
+        {
+            RenameTask(task);
+        }
+    }
+
     /// <summary>Abandons an inline rename, putting the stored name back.</summary>
     public void CancelRename(TaskViewModel? task)
     {

@@ -245,11 +245,43 @@ One harness trap worth recording: the first run showed `WS_EX_TOPMOST=True` only
 driver's own "bring to front" helper used `HWND_TOPMOST`. That was measuring the harness, not the
 app. The helper was changed to `HWND_TOP` and the whole sequence re-run from a fresh start.
 
-Two small things this surfaced, neither fixed here:
-- While a task's inline rename box is open, that row will not accept a drop — a WPF `TextBox`
-  handles `DragOver`/`Drop` itself for text, so the payload never reaches the row.
-- If the rename box never receives keyboard focus, nothing commits it and it stays open; `Escape`
-  and lost-focus both assume it had focus.
+Two small things this surfaced, both fixed in the second feedback round below.
+
+### Second feedback round
+
+- **The rename box now closes on any other interaction.** `MainViewModel.CommitPendingRename` is
+  called from a window-level `PreviewMouseDown` whenever the press lands outside a `TextBox`, so a
+  toolbar button, the start of a drag or a click on another row all settle it. Lost-focus alone was
+  never enough — it requires the box to have *had* focus, and a drag begun elsewhere would leave it
+  open indefinitely.
+- **A renaming row accepts drops again.** The rename `TextBox` is `AllowDrop="False"`: a WPF
+  `TextBox` handles `DragOver`/`Drop` itself for text and swallowed the payload. With the fix above
+  this is now belt-and-braces — any mouse-down closes the box before a drag can start — but the
+  control should not be a drop target either way.
+- **Elevated windows are excluded from the inventory** when HydraWin is not itself elevated. New
+  `TrackableVerdict.Elevated` clause, evaluated immediately after own-process and before the
+  cosmetic clauses so the rejection reason is the one that matters. Detection is
+  `NativeMethods.IsProcessElevated` (`OpenProcess` → `OpenProcessToken` → `TokenElevation`), cached
+  per process id in `WindowProbe` with a one-minute TTL — the sweep asks for several hundred
+  windows every two seconds, and elevation never changes for a live process; the TTL only bounds a
+  recycled process id inheriting a stale answer. **Being unable to query counts as elevated**: task
+  01 established that plain elevation does not block `PROCESS_QUERY_LIMITED_INFORMATION` for a
+  same-user process, so a failure means something stronger. This supersedes the "detected, marked
+  in the UI, and skipped" line in `CLAUDE.md`, which was updated.
+- **HydraWin's own window was already excluded** — `WindowFilter` has rejected `OwnProcess` since
+  task 03, and a live check confirmed no row carries the app's own pid. The "HydraWin" row the user
+  saw is *SourceGit*, whose window title happens to be the repository name; its process line reads
+  `SourceGit.exe`. No change made.
+
+#### Verified
+
+| Check | Observed |
+| --- | --- |
+| Elevated window excluded | `Administrator: Windows PowerShell` (pid 20720) visible and titled on the desktop, independently confirmed elevated by the test driver's own token query — absent from the unassigned list |
+| Own window excluded | no row for `hydrawin.exe`; the `HydraWin` row is `SourceGit.exe` |
+| Rename closes on a button | box open → pressed *Show all* → box gone |
+| Rename closes on a drag | box open → started dragging a window row → box gone |
+| Dropping still works | *"Added “SVG Icons in .NET - Google Chrome” to “Task 3”"* after the `AllowDrop` change |
 
 ### Build, tests, format
 

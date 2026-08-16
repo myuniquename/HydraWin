@@ -94,13 +94,18 @@ internal static class DragDropSupport
     /// Whether the click landed on a control that handles its own clicks — the expand toggle, the
     /// rename box, a menu — which must never also switch tasks.
     /// </summary>
-    internal static bool IsInteractiveControl(object? source)
+    internal static bool IsInteractiveControl(object? source) =>
+        IsWithin<ButtonBase>(source) || IsWithin<System.Windows.Controls.TextBox>(source);
+
+    /// <summary>Whether the element or any of its ancestors is of the given type.</summary>
+    internal static bool IsWithin<T>(object? source)
+        where T : DependencyObject
     {
         for (DependencyObject? node = source as DependencyObject;
             node is not null;
             node = VisualTreeHelper.GetParent(node))
         {
-            if (node is ButtonBase or System.Windows.Controls.TextBox)
+            if (node is T)
             {
                 return true;
             }

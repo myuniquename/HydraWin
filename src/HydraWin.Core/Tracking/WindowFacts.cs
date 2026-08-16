@@ -18,6 +18,11 @@ namespace HydraWin.Core.Tracking;
 /// <param name="Owner">Result of <c>GetWindow(GW_OWNER)</c>; non-zero means an owned window.</param>
 /// <param name="IsCloaked">True when DWM reports the window cloaked (UWP ghost).</param>
 /// <param name="Pid">Owning process id.</param>
+/// <param name="IsElevated">
+/// True when the owning process runs elevated — or is otherwise beyond this process's reach. A
+/// non-elevated HydraWin cannot hide such a window, so it is kept out of the inventory rather than
+/// offered to the user as something they can put in a task.
+/// </param>
 public readonly record struct WindowFacts(
     nint Hwnd,
     string Title,
@@ -26,4 +31,5 @@ public readonly record struct WindowFacts(
     long ExtendedStyle,
     nint Owner,
     bool IsCloaked,
-    int Pid);
+    int Pid,
+    bool IsElevated = false);

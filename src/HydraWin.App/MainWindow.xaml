@@ -158,7 +158,9 @@
                                    Visibility="{Binding IsRenaming,
                                                         Converter={StaticResource InverseBoolToVisibility}}" />
 
-                        <TextBox Grid.Column="2"
+                        <!-- AllowDrop=False on purpose: a TextBox handles DragOver and Drop itself
+                             for text, which would swallow a window dropped on this row. -->
+                        <TextBox Grid.Column="2" AllowDrop="False"
                                  Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
                                  VerticalAlignment="Center" Padding="2,0"
                                  IsVisibleChanged="OnRenameBoxVisibleChanged"

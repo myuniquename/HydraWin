@@ -124,6 +124,11 @@ internal static partial class NativeMethods
 
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
+    internal const uint TOKEN_QUERY = 0x0008;
+
+    /// <summary><c>TOKEN_INFORMATION_CLASS.TokenElevation</c>.</summary>
+    internal const int TokenElevation = 20;
+
     internal const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     internal const uint EVENT_OBJECT_DESTROY = 0x8001;
     internal const uint EVENT_OBJECT_SHOW = 0x8002;
@@ -259,6 +264,22 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "DestroyIcon", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool DestroyIconCore(nint hIcon);
+
+    [LibraryImport("advapi32.dll", EntryPoint = "OpenProcessToken", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool OpenProcessTokenCore(
+        nint processHandle,
+        uint desiredAccess,
+        out nint tokenHandle);
+
+    [LibraryImport("advapi32.dll", EntryPoint = "GetTokenInformation", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetTokenInformationCore(
+        nint tokenHandle,
+        int tokenInformationClass,
+        out uint tokenInformation,
+        uint tokenInformationLength,
+        out uint returnLength);
 
     // ---------------------------------------------------------------- wrappers
 
@@ -484,6 +505,49 @@ internal static partial class NativeMethods
 
         hIcon = small;
         return small != 0;
+    }
+
+    /// <summary>
+    /// Whether a process is running elevated. A non-elevated HydraWin cannot hide such a window
+    /// (UIPI, measured in task 01), so the tracker leaves them out of the inventory entirely.
+    /// </summary>
+    /// <remarks>
+    /// Being unable to ask counts as elevated. Task 01 established that plain elevation does not
+    /// stop <c>OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)</c> for a same-user process, so a
+    /// failure here means something stronger than elevation — a protected process — which is
+    /// even further beyond reach. Guessing "not elevated" would put a window in the list that the
+    /// user could assign and HydraWin could never hide.
+    /// </remarks>
+    internal static bool IsProcessElevated(int pid)
+    {
+        nint process = OpenProcessCore(PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)pid);
+        if (process == 0)
+        {
+            return true;
+        }
+
+        try
+        {
+            if (!OpenProcessTokenCore(process, TOKEN_QUERY, out nint token))
+            {
+                return true;
+            }
+
+            try
+            {
+                return GetTokenInformationCore(
+                        token, TokenElevation, out uint elevated, sizeof(uint), out _)
+                    && elevated != 0;
+            }
+            finally
+            {
+                CloseHandleCore(token);
+            }
+        }
+        finally
+        {
+            CloseHandleCore(process);
+        }
     }
 
     /// <summary>Releases an icon handle from <see cref="TryExtractSmallIcon"/>.</summary>

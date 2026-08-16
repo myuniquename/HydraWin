@@ -30,4 +30,10 @@ public enum TrackableVerdict
 
     /// <summary>One of HydraWin's own windows, which it never manages.</summary>
     OwnProcess,
+
+    /// <summary>
+    /// Owned by an elevated process while HydraWin is not elevated. UIPI stops the hide, so
+    /// listing it would only offer the user something that could never be switched away.
+    /// </summary>
+    Elevated,
 }

@@ -14,11 +14,25 @@ public static class WindowFilter
     /// </summary>
     /// <param name="facts">The window's gathered properties.</param>
     /// <param name="ownProcessId">HydraWin's own process id; its windows are never tracked.</param>
-    public static TrackableVerdict Evaluate(in WindowFacts facts, int ownProcessId)
+    /// <param name="ownIsElevated">
+    /// Whether HydraWin itself is elevated. When it is, elevated windows are ordinary windows to
+    /// it and stay in the inventory; when it is not, UIPI puts them out of reach.
+    /// </param>
+    public static TrackableVerdict Evaluate(
+        in WindowFacts facts,
+        int ownProcessId,
+        bool ownIsElevated = false)
     {
         if (facts.Pid == ownProcessId)
         {
             return TrackableVerdict.OwnProcess;
+        }
+
+        // Before anything cosmetic: a window HydraWin could never hide has no business being
+        // offered as something to put in a task.
+        if (facts.IsElevated && !ownIsElevated)
+        {
+            return TrackableVerdict.Elevated;
         }
 
         if (string.IsNullOrEmpty(facts.Title))
@@ -54,6 +68,6 @@ public static class WindowFilter
     }
 
     /// <summary>Convenience over <see cref="Evaluate"/> for callers that only need yes/no.</summary>
-    public static bool IsTrackable(in WindowFacts facts, int ownProcessId) =>
-        Evaluate(in facts, ownProcessId) == TrackableVerdict.Trackable;
+    public static bool IsTrackable(in WindowFacts facts, int ownProcessId, bool ownIsElevated = false) =>
+        Evaluate(in facts, ownProcessId, ownIsElevated) == TrackableVerdict.Trackable;
 }

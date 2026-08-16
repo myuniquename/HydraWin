@@ -38,6 +38,48 @@ public class WindowFilterTests
         Assert.Equal(TrackableVerdict.OwnProcess, WindowFilter.Evaluate(in facts, OwnPid));
     }
 
+    [Fact]
+    public void AnElevatedWindowIsNotTrackedByANonElevatedHydraWin()
+    {
+        // UIPI would refuse the hide, so offering it as something to put in a task would only
+        // promise a switch that can never happen.
+        WindowFacts facts = Trackable() with { IsElevated = true };
+
+        Assert.Equal(
+            TrackableVerdict.Elevated,
+            WindowFilter.Evaluate(in facts, OwnPid, ownIsElevated: false));
+    }
+
+    [Fact]
+    public void AnElevatedWindowIsOrdinaryToAnElevatedHydraWin()
+    {
+        WindowFacts facts = Trackable() with { IsElevated = true };
+
+        Assert.Equal(
+            TrackableVerdict.Trackable,
+            WindowFilter.Evaluate(in facts, OwnPid, ownIsElevated: true));
+    }
+
+    [Fact]
+    public void ElevationIsCheckedBeforeTheCosmeticClauses()
+    {
+        // An elevated window that is also cloaked should report the reason that actually matters,
+        // so the rejection counts say something useful.
+        WindowFacts facts = Trackable() with { IsElevated = true, IsCloaked = true };
+
+        Assert.Equal(TrackableVerdict.Elevated, WindowFilter.Evaluate(in facts, OwnPid));
+    }
+
+    [Fact]
+    public void HydraWinsOwnWindowLosesToNothingElse()
+    {
+        // Own-process wins even over elevation: if HydraWin were elevated, its own window must
+        // still never appear in its own list.
+        WindowFacts facts = Trackable() with { Pid = OwnPid, IsElevated = true };
+
+        Assert.Equal(TrackableVerdict.OwnProcess, WindowFilter.Evaluate(in facts, OwnPid));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData(null)]

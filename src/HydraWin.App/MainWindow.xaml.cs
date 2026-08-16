@@ -47,6 +47,23 @@ public partial class MainWindow : Window
     public void ShowRecoveryNotice(RestoreSummary summary) => viewModel.ShowRecoveryNotice(summary);
 
     /// <summary>
+    /// Any press anywhere outside an open rename box commits it — a toolbar button, the start of a
+    /// drag, another task row. Handled at the window so nothing has to remember to do it, and in
+    /// the tunnelling phase so the rename is settled before the click is acted on.
+    /// </summary>
+    protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (!DragDropSupport.IsWithin<TextBox>(e.OriginalSource))
+        {
+            viewModel.CommitPendingRename();
+        }
+
+        base.OnPreviewMouseDown(e);
+    }
+
+    /// <summary>
     /// Asks before deleting a task. The wording is deliberate: it states what happens to the
     /// windows, because that is the safety model the whole app rests on.
     /// </summary>
