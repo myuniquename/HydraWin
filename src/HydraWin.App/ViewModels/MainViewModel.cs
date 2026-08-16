@@ -20,33 +20,52 @@ namespace HydraWin.App.ViewModels;
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly WindowTracker tracker;
+    private readonly HiddenWindowSet hiddenWindows;
     private readonly WorkspaceStore store;
     private readonly WorkspaceService workspaces;
     private readonly RecoveryJournal journal;
-    private readonly RestoreService restoreService;
+    private readonly SwitchEngine switchEngine;
     private readonly IWindowApi windowApi = Win32WindowApi.Instance;
     private bool disposed;
 
     public MainViewModel(RecoveryJournal journal, RestoreService restoreService)
-        : this(new WindowTracker(EmptyHiddenWindowSet.Instance), new WorkspaceStore(), journal, restoreService)
+        : this(new HiddenWindowSet(journal), new WorkspaceStore(), journal, restoreService)
+    {
+    }
+
+    private MainViewModel(
+        HiddenWindowSet hiddenWindows,
+        WorkspaceStore store,
+        RecoveryJournal journal,
+        RestoreService restoreService)
+        : this(new WindowTracker(hiddenWindows), hiddenWindows, store, journal, restoreService)
     {
     }
 
     public MainViewModel(
         WindowTracker tracker,
+        HiddenWindowSet hiddenWindows,
         WorkspaceStore store,
         RecoveryJournal journal,
         RestoreService restoreService)
     {
         ArgumentNullException.ThrowIfNull(tracker);
+        ArgumentNullException.ThrowIfNull(hiddenWindows);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(journal);
         ArgumentNullException.ThrowIfNull(restoreService);
         this.tracker = tracker;
+        this.hiddenWindows = hiddenWindows;
         this.store = store;
         this.journal = journal;
-        this.restoreService = restoreService;
         workspaces = new WorkspaceService(store);
+        switchEngine = new SwitchEngine(
+            workspaces, journal, restoreService, windowApi, hiddenWindows);
+        switchEngine.SwitchCompleted += (_, summary) =>
+        {
+            RefreshTasks();
+            UpdateStatus($"switch: {summary}");
+        };
 
         tracker.WindowAppeared += OnWindowAppeared;
         tracker.WindowDisappeared += OnWindowDisappeared;
@@ -165,17 +184,75 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Task 05 drill: restores everything the journal lists.</summary>
+    /// <summary>Task 06 harness: brings every hidden window back and clears the active task.</summary>
     [RelayCommand]
     public void RestoreAllWindows()
     {
-        RestoreSummary summary = restoreService.RestoreAll(journal);
+        RestoreSummary summary = switchEngine.ShowAllTasks();
         foreach (TrackedWindow window in Windows)
         {
             window.IsHydraWinHidden = false;
         }
 
+        RefreshTasks();
         UpdateStatus(summary.ToString());
+    }
+
+    /// <summary>
+    /// Task 06 harness: switches to the task at the given 1-based position, which is what the
+    /// number keys and the per-task buttons both call. Task 07 replaces this with the task table.
+    /// </summary>
+    [RelayCommand]
+    public void SwitchToOrder(int order)
+    {
+        HydraWinTask? task = workspaces.Tasks.FirstOrDefault(t => t.Order == order);
+        if (task is null)
+        {
+            UpdateStatus($"no task at position {order}");
+            return;
+        }
+
+        switchEngine.SwitchTo(task.Id);
+        SyncHiddenFlags();
+    }
+
+    /// <summary>Task 06 harness: deletes the active task, showing its windows first.</summary>
+    [RelayCommand]
+    public void DeleteActiveTask()
+    {
+        if (workspaces.State.ActiveTaskId is not Guid active)
+        {
+            UpdateStatus("no active task to delete");
+            return;
+        }
+
+        IReadOnlyList<WindowAssignment> orphaned = switchEngine.DeleteTask(active);
+        SyncHiddenFlags();
+        RefreshTasks();
+        UpdateStatus($"deleted the active task; {orphaned.Count} window(s) unassigned, none closed");
+    }
+
+    /// <summary>
+    /// When the crash hook is armed, the next switch kills the process between the journal flush
+    /// and the first hide — the worst interleaving the invariant has to survive.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CrashAfterJournalFlush { get; set; }
+
+    private void SyncHiddenFlags()
+    {
+        foreach (TrackedWindow window in Windows)
+        {
+            window.IsHydraWinHidden = hiddenWindows.Contains(window.Hwnd);
+        }
+    }
+
+    partial void OnCrashAfterJournalFlushChanged(bool value)
+    {
+        switchEngine.AfterJournalFlush = value
+            ? () => Environment.FailFast("HydraWin task 06 crash drill: dying between journal flush and hide.")
+            : null;
+        UpdateStatus(value ? "CRASH HOOK ARMED — the next switch will kill the process" : "crash hook off");
     }
 
     /// <summary>Starts tracking. Must be called on the dispatcher thread.</summary>
@@ -238,6 +315,36 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         RefreshTasks();
+    }
+
+    /// <summary>
+    /// Task 06 harness: builds three tasks from windows titled <c>HW-TASK1-…</c> and so on, so
+    /// the switch drill has a known layout. Task 07 replaces all of this with drag-and-drop.
+    /// </summary>
+    [RelayCommand]
+    public void SeedSwitchDrill()
+    {
+        for (int n = 1; n <= 3; n++)
+        {
+            string marker = $"HW-TASK{n}-";
+            List<TrackedWindow> members =
+                [.. Windows.Where(w => w.Title.Contains(marker, StringComparison.OrdinalIgnoreCase))];
+
+            if (members.Count == 0)
+            {
+                continue;
+            }
+
+            HydraWinTask task = workspaces.CreateTask($"Task {n}");
+            foreach (TrackedWindow window in members)
+            {
+                workspaces.AssignWindow(task.Id, window);
+            }
+        }
+
+        workspaces.Flush();
+        RefreshTasks();
+        UpdateStatus($"seeded {workspaces.Tasks.Count} task(s) for the switch drill");
     }
 
     /// <summary>Task 04 harness: writes any pending state immediately.</summary>
@@ -350,16 +457,24 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         Windows.Remove(window);
 
-        // Drops the binding but keeps the rule, so the window re-attaches when it comes back.
+        // Drops the binding but keeps the rule, so the window re-attaches when it comes back...
         workspaces.OnWindowDisappeared(window.Hwnd);
+
+        // ...and forgets it in the journal, so a window that died while hidden does not leave a
+        // dead handle behind in journal.json and the hidden set.
+        switchEngine.OnWindowDisappeared(window.Hwnd);
         UpdateStatus($"- {window.ProcessFileName}");
     }
 
     private void OnWindowTitleChanged(object? sender, WindowTitleChangedEventArgs e) =>
         UpdateStatus($"~ {e.Window.ProcessFileName}: {e.NewTitle}");
 
-    private void OnForegroundChanged(object? sender, nint hwnd) =>
+    private void OnForegroundChanged(object? sender, nint hwnd)
+    {
+        // Remembered per task so switching back restores focus where the user left it.
+        switchEngine.OnForegroundChanged(hwnd);
         UpdateStatus($"foreground 0x{hwnd:X}");
+    }
 
     private void UpdateStatus(string detail) =>
         Status = $"{Windows.Count} tracked, {Rejected.Count} rejected — {detail} "

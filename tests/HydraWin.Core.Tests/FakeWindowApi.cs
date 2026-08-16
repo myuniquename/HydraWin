@@ -17,6 +17,18 @@ internal sealed class FakeWindowApi : IWindowApi
     /// <summary>Handles whose <see cref="Show"/> should report failure.</summary>
     internal HashSet<nint> RefuseToShow { get; } = [];
 
+    /// <summary>
+    /// Handles whose <see cref="Hide"/> should report failure, mirroring an elevated window under
+    /// UIPI: refused with <c>ERROR_ACCESS_DENIED</c> and left visible.
+    /// </summary>
+    internal HashSet<nint> RefuseToHide { get; } = [];
+
+    /// <summary>Whichever handle <see cref="TryFocus"/> last landed on.</summary>
+    internal nint FocusedWindow { get; private set; }
+
+    /// <summary>Runs at the start of every <see cref="Hide"/> — used to observe ordering.</summary>
+    internal Action<nint>? OnHide { get; set; }
+
     internal FakeWindow Add(nint hwnd, int pid, string path, bool visible = false)
     {
         var window = new FakeWindow
@@ -30,6 +42,9 @@ internal sealed class FakeWindowApi : IWindowApi
     }
 
     internal FakeWindow? Get(nint hwnd) => windows.GetValueOrDefault(hwnd);
+
+    /// <summary>Models a window being closed — by the user or by Task Manager.</summary>
+    internal void Remove(nint hwnd) => windows.Remove(hwnd);
 
     public bool IsWindow(nint hwnd)
     {
@@ -75,13 +90,32 @@ internal sealed class FakeWindowApi : IWindowApi
     public ShowWindowResult Hide(nint hwnd)
     {
         Calls.Add($"Hide(0x{hwnd:X})");
+        OnHide?.Invoke(hwnd);
+
         if (!windows.TryGetValue(hwnd, out FakeWindow? w))
         {
             return new ShowWindowResult(false, 0);
         }
 
+        if (RefuseToHide.Contains(hwnd))
+        {
+            return new ShowWindowResult(false, 5);
+        }
+
         w.Visible = false;
         return new ShowWindowResult(true, 0);
+    }
+
+    public bool TryFocus(nint hwnd)
+    {
+        Calls.Add($"Focus(0x{hwnd:X})");
+        if (!windows.TryGetValue(hwnd, out FakeWindow? w) || !w.Visible)
+        {
+            return false;
+        }
+
+        FocusedWindow = hwnd;
+        return true;
     }
 
     public ShowWindowResult Show(nint hwnd)

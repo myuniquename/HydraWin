@@ -47,4 +47,10 @@ public interface IWindowApi
 
     /// <summary>Shows a window, reporting whether it actually came back.</summary>
     ShowWindowResult Show(nint hwnd);
+
+    /// <summary>
+    /// Brings a window to the foreground, reporting whether focus actually landed. Only valid
+    /// while HydraWin is itself the foreground process — see the implementation's remarks.
+    /// </summary>
+    bool TryFocus(nint hwnd);
 }

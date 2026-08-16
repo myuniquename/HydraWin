@@ -229,6 +229,13 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool IsWindowCore(nint hWnd);
 
+    [LibraryImport("user32.dll", EntryPoint = "SetForegroundWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetForegroundWindowCore(nint hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+    private static partial nint GetForegroundWindowCore();
+
     [LibraryImport("user32.dll", EntryPoint = "GetWindowPlacement", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetWindowPlacementCore(nint hWnd, ref WindowPlacement lpwndpl);
@@ -382,6 +389,27 @@ internal static partial class NativeMethods
         WindowPlacement copy = placement;
         copy.Length = Marshal.SizeOf<WindowPlacement>();
         return SetWindowPlacementCore(hwnd, ref copy);
+    }
+
+    /// <summary>
+    /// Brings a window to the foreground, reporting whether focus actually landed there.
+    /// </summary>
+    /// <remarks>
+    /// <c>SetForegroundWindow</c> silently does nothing unless the calling process is already the
+    /// foreground one, so its return value is not to be trusted — this checks
+    /// <c>GetForegroundWindow</c> afterwards. HydraWin only ever calls this during a
+    /// user-initiated switch, when it *is* foreground; there are deliberately no
+    /// <c>AttachThreadInput</c> tricks for any other path (repo gotcha).
+    /// </remarks>
+    internal static bool TryFocus(nint hwnd)
+    {
+        if (!TryGetIdentity(hwnd, out _, out bool visible) || !visible)
+        {
+            return false;
+        }
+
+        SetForegroundWindowCore(hwnd);
+        return GetForegroundWindowCore() == hwnd;
     }
 
     /// <summary>Hides a window and reports whether it actually went away.</summary>

@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:HydraWin.App.ViewModels"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="{Binding Title}" Height="600" Width="900"
@@ -24,6 +25,9 @@
             <Button Content="Seed demo tasks"
                     Command="{Binding SeedDemoTasksCommand}"
                     Margin="12,0,0,0" Padding="8,2" />
+            <Button Content="Seed switch drill"
+                    Command="{Binding SeedSwitchDrillCommand}"
+                    Margin="6,0,0,0" Padding="8,2" />
             <Button Content="Flush state"
                     Command="{Binding FlushStateCommand}"
                     Margin="6,0,0,0" Padding="8,2" />
@@ -36,6 +40,32 @@
             <Button Content="Restore all"
                     Command="{Binding RestoreAllWindowsCommand}"
                     Margin="6,0,0,0" Padding="8,2" />
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Switch to:" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <!-- CommandParameter must be typed: a bare "1" is a string and RelayCommand&lt;int&gt; rejects it. -->
+            <Button Content="1" Command="{Binding SwitchToOrderCommand}"
+                    Padding="10,2" Margin="0,0,4,0">
+                <Button.CommandParameter><sys:Int32>1</sys:Int32></Button.CommandParameter>
+            </Button>
+            <Button Content="2" Command="{Binding SwitchToOrderCommand}"
+                    Padding="10,2" Margin="0,0,4,0">
+                <Button.CommandParameter><sys:Int32>2</sys:Int32></Button.CommandParameter>
+            </Button>
+            <Button Content="3" Command="{Binding SwitchToOrderCommand}"
+                    Padding="10,2" Margin="0,0,4,0">
+                <Button.CommandParameter><sys:Int32>3</sys:Int32></Button.CommandParameter>
+            </Button>
+            <Button Content="4" Command="{Binding SwitchToOrderCommand}"
+                    Padding="10,2" Margin="0,0,12,0">
+                <Button.CommandParameter><sys:Int32>4</sys:Int32></Button.CommandParameter>
+            </Button>
+            <Button Content="Delete active task"
+                    Command="{Binding DeleteActiveTaskCommand}" Padding="8,2" Margin="0,0,12,0" />
+            <CheckBox Content="Crash after journal flush"
+                      IsChecked="{Binding CrashAfterJournalFlush}"
+                      VerticalAlignment="Center" Foreground="#B00000" />
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">

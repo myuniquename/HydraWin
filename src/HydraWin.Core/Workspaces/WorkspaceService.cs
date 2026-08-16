@@ -272,6 +272,43 @@ public sealed class WorkspaceService
         }
     }
 
+    /// <summary>The task with this id, or <see langword="null"/>.</summary>
+    public HydraWinTask? FindTask(Guid taskId)
+    {
+        lock (gate)
+        {
+            return State.Tasks.Find(t => t.Id == taskId);
+        }
+    }
+
+    /// <summary>
+    /// Records which task is switched to, or <see langword="null"/> for "everything visible".
+    /// Written by the switch engine.
+    /// </summary>
+    public void SetActiveTask(Guid? taskId)
+    {
+        lock (gate)
+        {
+            State.ActiveTaskId = taskId;
+        }
+
+        Persist();
+        Raise(TasksChanged);
+    }
+
+    /// <summary>
+    /// Remembers the window the user was last working in, so switching back can restore focus
+    /// there. Ignores windows that belong to no task.
+    /// </summary>
+    public void NoteForegroundWindow(nint hwnd)
+    {
+        HydraWinTask? task = FindTaskOf(hwnd);
+        if (task is not null)
+        {
+            task.LastActiveHwnd = hwnd;
+        }
+    }
+
     /// <summary>Forces any pending write to disk. Call on shutdown.</summary>
     public void Flush() => store.Flush();
 

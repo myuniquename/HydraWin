@@ -33,4 +33,11 @@ public sealed class HydraWinTask
     /// <summary>Assignments with a live window bound, which is what the switch engine acts on.</summary>
     [JsonIgnore]
     public IEnumerable<WindowAssignment> BoundAssignments => Assignments.Where(a => a.IsBound);
+
+    /// <summary>
+    /// The window of this task the user was last working in, so switching back restores focus
+    /// where they left it. Runtime-only: handles mean nothing across restarts.
+    /// </summary>
+    [JsonIgnore]
+    public nint? LastActiveHwnd { get; set; }
 }

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using HydraWin.App.ViewModels;
 using HydraWin.Core.Recovery;
 
@@ -22,8 +23,27 @@ public partial class MainWindow : Window
         // the window is loaded.
         Loaded += (_, _) => viewModel.Start();
         Closed += (_, _) => viewModel.Dispose();
+
+        // Task 06 harness: number keys switch tasks by position. Task 07 replaces this.
+        KeyDown += OnKeyDown;
     }
 
     /// <summary>Reports what startup recovery put back, without interrupting the user.</summary>
     public void ShowRecoveryNotice(RestoreSummary summary) => viewModel.ShowRecoveryNotice(summary);
+
+    private void OnKeyDown(object sender, KeyEventArgs e)
+    {
+        int order = e.Key switch
+        {
+            >= Key.D1 and <= Key.D9 => e.Key - Key.D1 + 1,
+            >= Key.NumPad1 and <= Key.NumPad9 => e.Key - Key.NumPad1 + 1,
+            _ => 0,
+        };
+
+        if (order > 0)
+        {
+            viewModel.SwitchToOrderCommand.Execute(order);
+            e.Handled = true;
+        }
+    }
 }

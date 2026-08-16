@@ -39,4 +39,7 @@ public sealed class Win32WindowApi : IWindowApi
 
     /// <inheritdoc />
     public ShowWindowResult Show(nint hwnd) => NativeMethods.Show(hwnd);
+
+    /// <inheritdoc />
+    public bool TryFocus(nint hwnd) => NativeMethods.TryFocus(hwnd);
 }

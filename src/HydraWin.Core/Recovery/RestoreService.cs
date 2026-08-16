@@ -23,6 +23,25 @@ public readonly record struct RestoreSummary(int Restored, int Stale, int Failed
     }
 }
 
+/// <summary>What happened to one journal entry.</summary>
+public enum RestoreOutcome
+{
+    /// <summary>The window was verified, put back where it was, and removed from the journal.</summary>
+    Restored,
+
+    /// <summary>
+    /// The window was gone, or its handle now belongs to something else. The entry was dropped
+    /// and nothing was shown.
+    /// </summary>
+    Stale,
+
+    /// <summary>
+    /// The window is still there and still ours but refused to come back. The entry stays so a
+    /// later attempt can retry.
+    /// </summary>
+    Failed,
+}
+
 /// <summary>
 /// Puts hidden windows back. This is the other half of the crash-safety contract: whatever the
 /// journal says is hidden, this makes visible again.
@@ -57,39 +76,60 @@ public sealed class RestoreService
 
         foreach (JournalEntry entry in journal.Snapshot())
         {
-            var hwnd = (nint)entry.Hwnd;
-
-            if (!MatchesIdentity(hwnd, entry))
+            switch (RestoreWindow(journal, entry))
             {
-                Debug.WriteLine(
-                    $"RestoreService: dropping stale entry 0x{entry.Hwnd:X} \"{entry.TitleAtHide}\".");
-                journal.ConfirmShown(entry.Hwnd);
-                stale++;
-                continue;
-            }
-
-            // Placement first: it carries the maximized state, and setting it on a hidden window
-            // is what makes the window reappear exactly where it was rather than merely visible.
-            WindowPlacement placement = entry.Placement.ToPlacement();
-            windowApi.TrySetPlacement(hwnd, in placement);
-
-            ShowWindowResult result = windowApi.Show(hwnd);
-            if (result.Succeeded)
-            {
-                journal.ConfirmShown(entry.Hwnd);
-                restored++;
-            }
-            else
-            {
-                // Keep the entry. A window that is still hidden and still ours must stay on the
-                // books, or nothing will ever bring it back.
-                Debug.WriteLine(
-                    $"RestoreService: 0x{entry.Hwnd:X} refused to show, win32={result.Win32Error}.");
-                failed++;
+                case RestoreOutcome.Restored:
+                    restored++;
+                    break;
+                case RestoreOutcome.Stale:
+                    stale++;
+                    break;
+                default:
+                    failed++;
+                    break;
             }
         }
 
         return new RestoreSummary(restored, stale, failed);
+    }
+
+    /// <summary>
+    /// Restores one journaled window, applying the same identity check as
+    /// <see cref="RestoreAll"/>. The switch engine calls this for the task it is switching to, so
+    /// the rule that an unverified handle is never shown lives in exactly one place.
+    /// </summary>
+    public RestoreOutcome RestoreWindow(RecoveryJournal journal, JournalEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(journal);
+        ArgumentNullException.ThrowIfNull(entry);
+
+        var hwnd = (nint)entry.Hwnd;
+
+        if (!MatchesIdentity(hwnd, entry))
+        {
+            Debug.WriteLine(
+                $"RestoreService: dropping stale entry 0x{entry.Hwnd:X} \"{entry.TitleAtHide}\".");
+            journal.ConfirmShown(entry.Hwnd);
+            return RestoreOutcome.Stale;
+        }
+
+        // Placement first: it carries the maximized state, and setting it on a hidden window is
+        // what makes the window reappear exactly where it was rather than merely visible.
+        WindowPlacement placement = entry.Placement.ToPlacement();
+        windowApi.TrySetPlacement(hwnd, in placement);
+
+        ShowWindowResult result = windowApi.Show(hwnd);
+        if (result.Succeeded)
+        {
+            journal.ConfirmShown(entry.Hwnd);
+            return RestoreOutcome.Restored;
+        }
+
+        // Keep the entry. A window that is still hidden and still ours must stay on the books, or
+        // nothing will ever bring it back.
+        Debug.WriteLine(
+            $"RestoreService: 0x{entry.Hwnd:X} refused to show, win32={result.Win32Error}.");
+        return RestoreOutcome.Failed;
     }
 
     private bool MatchesIdentity(nint hwnd, JournalEntry entry)

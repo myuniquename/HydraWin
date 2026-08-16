@@ -29,4 +29,17 @@ public sealed class WindowAssignment
     /// <summary>Whether a live window is currently bound.</summary>
     [JsonIgnore]
     public bool IsBound => BoundHwnd is not null;
+
+    /// <summary>
+    /// Set when the window refused to be hidden — in practice an elevated window, which UIPI
+    /// stops a non-elevated HydraWin from touching (task 01 measured the signature). The window
+    /// stays visible through every switch and task 10 annotates it in the UI.
+    /// </summary>
+    /// <remarks>
+    /// Runtime-only on purpose: the verdict comes from actually trying, and persisting it would
+    /// carry a stale answer across a restart where the offending app may no longer be running
+    /// elevated. The engine re-tries on each switch, so it heals by itself.
+    /// </remarks>
+    [JsonIgnore]
+    public bool Unmanageable { get; set; }
 }
