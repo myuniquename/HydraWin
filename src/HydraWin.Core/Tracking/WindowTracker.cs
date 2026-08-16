@@ -195,6 +195,21 @@ public sealed class WindowTracker : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Why one particular window is or is not trackable. The picker uses this to say <em>why</em>
+    /// it refused a window the user pointed at.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the same two calls <see cref="Explain"/> makes, so a refusal here and an
+    /// absence from the inventory can never disagree — "elevated" and "HydraWin's own window" are
+    /// clauses of <see cref="WindowFilter"/>, not a second opinion.
+    /// </remarks>
+    public TrackableVerdict ExplainOne(nint hwnd)
+    {
+        WindowFacts facts = WindowProbe.GetFacts(hwnd, hiddenWindows);
+        return WindowFilter.Evaluate(in facts, ownProcessId, ownIsElevated);
+    }
+
     /// <summary>Full re-enumeration diffed against the inventory. The sweep is the truth.</summary>
     private void Reconcile()
     {

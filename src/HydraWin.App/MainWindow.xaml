@@ -125,6 +125,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <Rectangle Grid.Column="0" Width="4" Height="20" RadiusX="2" RadiusY="2"
@@ -188,6 +189,21 @@
                         <TextBlock Grid.Column="5" VerticalAlignment="Center" Opacity="0.55"
                                    FontSize="11"
                                    Text="{Binding WindowCount, StringFormat={}{0} win}" />
+
+                        <!-- The Spy++ target. Tagged so the row's own mouse handling leaves it
+                             alone: pressing it must start neither a switch nor a row drag. -->
+                        <Border Grid.Column="6" Tag="Picker" Background="Transparent"
+                                Cursor="Cross" Margin="10,0,0,0" Padding="3"
+                                PreviewMouseLeftButtonDown="OnPickerMouseDown"
+                                ToolTip="Drag this onto any window on screen to put it in this task">
+                            <Grid Width="18" Height="18">
+                                <Ellipse Width="16" Height="16" Stroke="#4C8DFF" StrokeThickness="2" />
+                                <Line X1="9" Y1="0" X2="9" Y2="18" Stroke="#4C8DFF" StrokeThickness="2" />
+                                <Line X1="0" Y1="9" X2="18" Y2="9" Stroke="#4C8DFF" StrokeThickness="2" />
+                                <Ellipse Width="4" Height="4" Fill="#4C8DFF"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
                     </Grid>
 
                     <ItemsControl ItemsSource="{Binding Windows}"

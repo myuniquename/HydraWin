@@ -90,6 +90,14 @@ public struct WindowPlacement
 public readonly record struct ShowWindowResult(bool Succeeded, int Win32Error);
 
 /// <summary>
+/// One sample of the input the window picker follows, taken from the hardware rather than the
+/// message queue.
+/// </summary>
+/// <param name="ButtonHeld">Whether the left mouse button is still down — the pick continues.</param>
+/// <param name="CancelRequested">Whether Escape is down — the pick is abandoned.</param>
+public readonly record struct PickerInput(bool ButtonHeld, bool CancelRequested);
+
+/// <summary>
 /// The single home for every P/Invoke declaration in HydraWin. Nothing above
 /// <c>HydraWin.Core</c> may declare or call Win32 directly (see CLAUDE.md).
 /// </summary>
@@ -125,6 +133,21 @@ internal static partial class NativeMethods
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
     internal const uint TOKEN_QUERY = 0x0008;
+
+    /// <summary><c>GetAncestor(GA_ROOT)</c>: the top-level window a child belongs to.</summary>
+    private const uint GA_ROOT = 2;
+
+    private const long WS_EX_TRANSPARENT = 0x0000_0020L;
+    private const long WS_EX_NOACTIVATE = 0x0800_0000L;
+
+    private const int SWP_NOSIZE = 0x0001;
+    private const int SWP_NOMOVE = 0x0002;
+    private const int SWP_NOACTIVATE = 0x0010;
+    private const int SWP_NOOWNERZORDER = 0x0200;
+
+    private const nint HWND_TOP = 0;
+    private const nint HWND_BOTTOM = 1;
+    private const nint HWND_TOPMOST = -1;
 
     /// <summary><c>TOKEN_INFORMATION_CLASS.TokenElevation</c>.</summary>
     internal const int TokenElevation = 20;
@@ -264,6 +287,37 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "DestroyIcon", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool DestroyIconCore(nint hIcon);
+
+    [LibraryImport("user32.dll", EntryPoint = "WindowFromPoint")]
+    private static partial nint WindowFromPointCore(Point point);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetAncestor")]
+    private static partial nint GetAncestorCore(nint hWnd, uint gaFlags);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetAsyncKeyState")]
+    private static partial short GetAsyncKeyStateCore(int vKey);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetCursorPos", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetCursorPosCore(out Point lpPoint);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowRect", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetWindowRectCore(nint hWnd, out Rect lpRect);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static partial nint SetWindowLongPtrCore(nint hWnd, int nIndex, nint dwNewLong);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowPos", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPosCore(
+        nint hWnd,
+        nint hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint uFlags);
 
     [LibraryImport("advapi32.dll", EntryPoint = "OpenProcessToken", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -549,6 +603,151 @@ internal static partial class NativeMethods
             CloseHandleCore(process);
         }
     }
+
+    /// <summary>
+    /// Whether a mouse button or key is physically down right now, asked of the hardware rather
+    /// than of the message queue.
+    /// </summary>
+    /// <remarks>
+    /// The picker runs on this instead of a WPF mouse capture. Capture is fragile in exactly the
+    /// situation the picker creates: any window operation during the gesture — and dropping the
+    /// main window down the z-order is one — makes WPF release it, which ended the pick on the
+    /// first movement. Polling the hardware state cares about none of that, and is what Spy++ has
+    /// always done.
+    /// </remarks>
+    internal static PickerInput ReadPickerInput()
+    {
+        const int VK_LBUTTON = 0x01;
+        const int VK_ESCAPE = 0x1B;
+
+        // The high bit is "currently down". The low bit is "pressed since last asked" and would
+        // report a stale press, so it is masked away.
+        const int DownMask = 0x8000;
+
+        bool held = (GetAsyncKeyStateCore(VK_LBUTTON) & DownMask) != 0;
+        bool cancel = (GetAsyncKeyStateCore(VK_ESCAPE) & DownMask) != 0;
+
+        return new PickerInput(held, cancel);
+    }
+
+    /// <summary>Where the pointer is, in physical screen pixels.</summary>
+    /// <remarks>
+    /// Read from Win32 rather than converted out of WPF: <c>PointToScreen</c> depends on the
+    /// process's DPI awareness and gets subtly wrong answers across monitors of different scale,
+    /// whereas this and <see cref="TopLevelWindowAt"/> are in the same coordinate space by
+    /// construction.
+    /// </remarks>
+    internal static Point GetCursorPosition() =>
+        GetCursorPosCore(out Point point) ? point : default;
+
+    /// <summary>
+    /// The top-level window at a screen point. <c>WindowFromPoint</c> returns the deepest child,
+    /// so the result is walked up to its root — the user is pointing at an application window,
+    /// not at a button inside one.
+    /// </summary>
+    internal static nint TopLevelWindowAt(Point screenPoint)
+    {
+        nint hit = WindowFromPointCore(screenPoint);
+        if (hit == 0)
+        {
+            return 0;
+        }
+
+        nint root = GetAncestorCore(hit, GA_ROOT);
+        return root == 0 ? hit : root;
+    }
+
+    /// <summary>
+    /// The window's bounding rectangle in physical screen pixels, rejecting degenerate results.
+    /// </summary>
+    /// <remarks>
+    /// A window that is closing, or one of the 0×0 message-only windows that litter the desktop,
+    /// reports an empty or inverted rectangle. Callers want this to draw a highlight around, so an
+    /// unusable rectangle is reported as no rectangle rather than passed on.
+    /// </remarks>
+    internal static bool TryGetWindowRect(nint hwnd, out Rect rect)
+    {
+        if (!GetWindowRectCore(hwnd, out rect))
+        {
+            rect = default;
+            return false;
+        }
+
+        if (rect.Right <= rect.Left || rect.Bottom <= rect.Top)
+        {
+            rect = default;
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Drops a window to the bottom of the z-order, so anything it was covering becomes the
+    /// topmost window at those coordinates — and therefore pointable.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is how the picker gets HydraWin out of its own way. The obvious alternative — setting
+    /// <c>WS_EX_TRANSPARENT</c> on our own window to make it click-through — was tried and
+    /// abandoned: WPF owns <c>WS_EX_LAYERED</c> on a window whose <c>AllowsTransparency</c> is
+    /// false and strips it back out, which left the window click-through but fully opaque. A
+    /// half-applied ghost is the worst of both, and if a pick then ended abnormally the whole app
+    /// stayed invisible to the mouse.
+    /// </para>
+    /// <para>
+    /// Z-order carries no such risk: nothing can leave the window in a state that swallows input.
+    /// </para>
+    /// </remarks>
+    internal static void SendToBottom(nint hwnd) =>
+        SetWindowPosCore(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    /// <summary>Puts a window back on top after <see cref="SendToBottom"/>.</summary>
+    internal static void RestoreZOrder(nint hwnd, bool topmost) =>
+        SetWindowPosCore(
+            hwnd,
+            topmost ? HWND_TOPMOST : HWND_TOP,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    /// <summary>
+    /// Turns a window into the picker's highlight frame: always on top, never activated, invisible
+    /// to hit-testing, and absent from Alt-Tab.
+    /// </summary>
+    /// <remarks>
+    /// <c>WS_EX_TRANSPARENT</c> keeps it out of <see cref="TopLevelWindowAt"/>, so the highlight
+    /// can never be mistaken for the target. <c>WS_EX_TOOLWINDOW</c> is belt and braces: HydraWin's
+    /// own filter rejects tool windows, so even if it were enumerated it could not be tracked.
+    /// </remarks>
+    internal static void MakeOverlay(nint hwnd)
+    {
+        long style = GetWindowLongPtrCore(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrCore(
+            hwnd,
+            GWL_EXSTYLE,
+            (nint)(style | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW));
+    }
+
+    /// <summary>
+    /// Places the highlight over a target rectangle, in physical pixels.
+    /// </summary>
+    /// <remarks>
+    /// Positioned through Win32 rather than by setting WPF's <c>Left</c>/<c>Top</c>, which are
+    /// device-independent units and would need DPI arithmetic that goes wrong the moment the
+    /// target sits on a monitor with a different scale factor.
+    /// </remarks>
+    internal static void PositionOverlay(nint hwnd, in Rect rect) =>
+        SetWindowPosCore(
+            hwnd,
+            HWND_TOPMOST,
+            rect.Left,
+            rect.Top,
+            rect.Right - rect.Left,
+            rect.Bottom - rect.Top,
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 
     /// <summary>Releases an icon handle from <see cref="TryExtractSmallIcon"/>.</summary>
     internal static void DestroyIcon(nint hIcon)

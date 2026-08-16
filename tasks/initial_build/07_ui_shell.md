@@ -73,9 +73,12 @@ long, `GongSolutions.WPF.DragDrop` is an acceptable dependency — note it in th
 record if used.
 
 ### D. Assignment/switch behaviours in the UI
-- Assigning a window to a *non-active* task while another task is active: the window stays
+- ~~Assigning a window to a *non-active* task while another task is active: the window stays
   visible until the next switch (predictable; no surprise disappearance on drop). State this in
-  a tooltip on the drop.
+  a tooltip on the drop.~~ **Superseded on the user's instruction** (see *Window picker* in the
+  record): assigning to a task that is not the one on screen hides the window immediately, so it
+  behaves as though it had always belonged there. This applies to the drop and to the picker
+  alike — both go through `SwitchEngine.AssignWindowToTask`.
 - Auto re-attach (Core, task 04) surfacing: when a rule binds a reappearing window, its row just
   shows up under the task — plus a status-bar line "Re-attached *Code — hydrawin* to *Alpha*".
 - Switch summaries (`SwitchCompleted`) and recovery notices (task 05) appear in the same
@@ -283,12 +286,84 @@ Two small things this surfaced, both fixed in the second feedback round below.
 | Rename closes on a drag | box open → started dragging a window row → box gone |
 | Dropping still works | *"Added “SVG Icons in .NET - Google Chrome” to “Task 3”"* after the `AllowDrop` change |
 
+### Window picker (third feedback round)
+
+A Spy++-style crosshair on every task row: press it, drag over the desktop with the window under
+the pointer outlined, release, and that window joins the task.
+
+- **One assignment path for both gestures.** `SwitchEngine.AssignWindowToTask` assigns and then —
+  only when some *other* task is active — hides, by calling the switch's own private `HideAll`.
+  That is deliberate and load-bearing: hiding on assignment is a new way to hide a foreign window,
+  and routing it through `HideAll` means the journal-before-hide invariant applies here without a
+  second implementation of it. The drop path was rerouted through the same method, so drag-and-drop
+  and the picker cannot drift apart. **This overrides § D** at the user's instruction.
+- **Refusals reuse the filter.** A picked window is looked up in the tracker's inventory — being in
+  it *is* the whitelist, since `OwnProcess` and `Elevated` are already clauses of `WindowFilter`.
+  Only on a miss does `WindowTracker.ExplainOne` name the reason, using the same two calls
+  `Explain()` makes. The picker's refusals and the pane's omissions therefore cannot disagree.
+- **HydraWin ghosts itself while picking** — `WS_EX_TRANSPARENT` plus ~35% alpha on its own window.
+  Not decoration: *Stay on top* is on by default, so without it every window behind the app would
+  be unpickable. Restored on release, on Escape, and on lost capture.
+- **The highlight is positioned in physical pixels** through `SetWindowPos`, not through WPF's
+  `Left`/`Top`, whose device-independent units would need DPI arithmetic that breaks the moment the
+  pointer crosses to a monitor with a different scale factor. It is `WS_EX_TRANSPARENT` so
+  `WindowFromPoint` never returns it, and `WS_EX_TOOLWINDOW` so HydraWin's own filter would reject
+  it even if it were enumerated.
+- New `IScreenApi` / `Win32ScreenApi` keeps the App free of P/Invoke, as the repo rule requires.
+
+#### The gesture does not use WPF mouse capture, and that is the interesting part
+
+The obvious implementation — `Mouse.Capture` on the crosshair, track `MouseMove`, finish on
+`MouseUp` — does not survive this particular gesture. **Any window operation performed while the
+capture is held makes WPF release it**, and the pick ends on the first movement with no way to tell
+why. Two such operations are unavoidable here: getting the main window out of the way, and showing
+the highlight. Moving them before the capture was taken did not help, and neither did
+`CaptureMode.Element` in place of `SubTree`.
+
+So the picker follows the hardware instead: a 30 ms `DispatcherTimer` reads `GetCursorPos` and
+`GetAsyncKeyState` and ends the gesture when the button comes up. That is what Spy++ has always
+done, and it is indifferent to activation, z-order and focus. The timer only runs while the button
+is held.
+
+Getting the main window out of the way went the same way. The first attempt made HydraWin
+click-through with `WS_EX_TRANSPARENT` plus a translucent `WS_EX_LAYERED`; WPF owns `WS_EX_LAYERED`
+on a window whose `AllowsTransparency` is false and strips it straight back out, leaving the window
+**opaque but invisible to the mouse** — and if a pick then ended abnormally, the whole app stayed
+that way and ignored every click. Dropping it to the bottom of the z-order for the duration achieves
+the same thing with nothing to strand.
+
+#### Verified live
+
+| Check | Observed |
+| --- | --- |
+| Pick into an **inactive** task | *"Added “HW-PICK2 — Google Chrome” to “Beta” and hid it with the task."*; the window went from `visible=True` to `visible=False`, and the journal held exactly it |
+| Journal before hide | the entry was on disk after a hard `Stop-Process` kill, and `hydrawin.exe --restore-all` brought the window back and emptied the journal |
+| Pick into the **active** task | *"Added … to “Alpha”."*, window stayed visible, journal empty |
+| Pick a window HydraWin completely covers | resolved the covered window, not HydraWin — the z-order drop works |
+| Own window / occlusion | pointing at HydraWin resolves whatever is behind it, so the app can never be picked into a task |
+| Escape | ends the pick |
+| Desktop and taskbar | not outlined; releasing over the taskbar says *"That is not a window HydraWin can manage."* and assigns nothing |
+
+**The frame only outlines what a release would actually take.** It first highlighted whatever
+`WindowFromPoint` returned, which meant the desktop and the taskbar looked selectable and were then
+refused — the highlight promised something the drop would not honour. `WindowPicker.CanPick` now
+asks the view model, whose answer is "is this handle in the inventory", the very condition for
+accepting it. The handle is still remembered when it is not outlined, so releasing over the taskbar
+gets an explanation instead of silence.
+
+Not verified live: picking an **elevated** window. The one on the desktop
+(`Administrator: Windows PowerShell`) turned out to be completely occluded by other windows, so
+there was no point at which it was the top-level window and it could not be pointed at. The branch
+is covered by the filter's unit tests and by the previous round's live proof that elevated windows
+are absent from the inventory — which is the same lookup the picker uses.
+
 ### Build, tests, format
 
 - `dotnet build HydraWin.sln` — **0 warnings, 0 errors**.
-- `dotnet test --solution HydraWin.sln` — **161/161 passed** (132 before; 29 new: 9 for
+- `dotnet test --solution HydraWin.sln` — **172/172 passed** (132 before; 40 new: 9 for
   `ClaudeCodeTitle`, 11 for reordering and the move fix, 3 for `SwitchToWindow`, 2 for the settings
-  round-trip, plus the existing suites re-run).
+  round-trip, 4 for the elevated-window filter clause, 7 for `AssignWindowToTask` — including the
+  journal-before-hide invariant on the new hide path — plus the existing suites re-run).
 - `dotnet format --verify-no-changes` — exit 0. All three `spikes/` projects still build.
 
 ### User walkthrough

@@ -28,6 +28,9 @@ internal static class DragDropSupport
     /// <summary>Marks the element that represents one window row.</summary>
     internal const string WindowRowTag = "WindowRow";
 
+    /// <summary>Marks a task row's picker crosshair, which handles its own press.</summary>
+    internal const string PickerTag = "Picker";
+
     /// <summary>Whether the pointer has moved far enough to mean "drag" rather than "click".</summary>
     internal static bool PastDragThreshold(Point origin, Point current) =>
         Math.Abs(current.X - origin.X) >= SystemParameters.MinimumHorizontalDragDistance

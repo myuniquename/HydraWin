@@ -1,5 +1,6 @@
 using HydraWin.Core.Interop;
 using HydraWin.Core.Recovery;
+using HydraWin.Core.Tracking;
 
 namespace HydraWin.Core.Workspaces;
 
@@ -21,6 +22,28 @@ public readonly record struct SwitchSummary(int Hidden, int Shown, int Stale, in
 
         return Unmanageable > 0 ? text + $", {Unmanageable} could not be hidden" : text;
     }
+}
+
+/// <summary>What happened when a window was put into a task.</summary>
+public enum AssignOutcome
+{
+    /// <summary>No such task.</summary>
+    UnknownTask,
+
+    /// <summary>Assigned and left visible: the task is the active one, or nothing is active.</summary>
+    Assigned,
+
+    /// <summary>Assigned and hidden straight away, because its new task is not the one on screen.</summary>
+    AssignedAndHidden,
+
+    /// <summary>Assigned, but the window refused to hide — in practice an elevated one.</summary>
+    AssignedButRefusedToHide,
+
+    /// <summary>
+    /// Assigned, but its placement could not be read, so it was left visible rather than hidden
+    /// with no way to put it back.
+    /// </summary>
+    AssignedButUnreadablePlacement,
 }
 
 /// <summary>
@@ -125,6 +148,47 @@ public sealed class SwitchEngine
         SwitchSummary summary = SwitchTo(owner.Id);
         windowApi.TryFocus(hwnd);
         return summary;
+    }
+
+    /// <summary>
+    /// Puts a window into a task, hiding it immediately when that task is not the one on screen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The single entry point for both ways of assigning a window — the drag-and-drop drop and the
+    /// Spy++-style picker — so the two gestures cannot drift apart.
+    /// </para>
+    /// <para>
+    /// Hiding here goes through the same <see cref="HideAll"/> the switch uses, which is the whole
+    /// point: the journal is written and flushed before anything is hidden, on this path exactly as
+    /// on that one. A window is hidden only when some <em>other</em> task is active; with nothing
+    /// active every window is meant to be on screen, so there is nothing to hide it for.
+    /// </para>
+    /// </remarks>
+    public AssignOutcome AssignWindowToTask(Guid taskId, TrackedWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        if (workspaces.AssignWindow(taskId, window) is not WindowAssignment assignment)
+        {
+            return AssignOutcome.UnknownTask;
+        }
+
+        if (workspaces.State.ActiveTaskId is not Guid active || active == taskId)
+        {
+            return AssignOutcome.Assigned;
+        }
+
+        (int hidden, int unmanageable) = HideAll([assignment]);
+
+        if (hidden > 0)
+        {
+            return AssignOutcome.AssignedAndHidden;
+        }
+
+        return unmanageable > 0
+            ? AssignOutcome.AssignedButRefusedToHide
+            : AssignOutcome.AssignedButUnreadablePlacement;
     }
 
     /// <summary>

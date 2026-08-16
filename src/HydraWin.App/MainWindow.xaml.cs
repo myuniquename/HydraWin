@@ -3,7 +3,11 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using HydraWin.App.ViewModels;
+using HydraWin.Core.Interop;
 using HydraWin.Core.Recovery;
+
+// The view layer works in WPF's device-independent points; only the picker speaks Win32's.
+using Point = System.Windows.Point;
 
 namespace HydraWin.App;
 
@@ -24,6 +28,7 @@ public partial class MainWindow : Window
     private object? pressedItem;
     private bool dragging;
     private DragGhostAdorner? ghost;
+    private WindowPicker? picker;
     private WindowViewModel? menuWindow;
     private TaskViewModel? menuTask;
 
@@ -40,7 +45,11 @@ public partial class MainWindow : Window
         // The tracker's WinEvent hooks need a message pump, which the dispatcher thread has once
         // the window is loaded.
         Loaded += (_, _) => viewModel.Start();
-        Closed += (_, _) => viewModel.Dispose();
+        Closed += (_, _) =>
+        {
+            picker?.Dispose();
+            viewModel.Dispose();
+        };
     }
 
     /// <summary>Reports what startup recovery put back, without interrupting the user.</summary>
@@ -84,9 +93,10 @@ public partial class MainWindow : Window
         dragging = false;
         pressedItem = null;
 
-        // The expand toggle and the rename box own their clicks; a press there is neither a drag
-        // nor a switch.
-        if (DragDropSupport.IsInteractiveControl(e.OriginalSource))
+        // The expand toggle, the rename box and the picker crosshair own their presses; none of
+        // them is a drag or a switch.
+        if (DragDropSupport.IsInteractiveControl(e.OriginalSource)
+            || DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.PickerTag) is not null)
         {
             return;
         }
@@ -371,6 +381,30 @@ public partial class MainWindow : Window
         return TaskList.ItemContainerGenerator.ContainerFromItem(task) is DependencyObject container
             ? DragDropSupport.FindDescendantRow(container, DragDropSupport.TaskRowTag)
             : null;
+    }
+
+    // ------------------------------------------------------------------ picker
+
+    /// <summary>
+    /// Starts a Spy++-style pick for the crosshair's task. The gesture is press-drag-release, so
+    /// everything from here until the button comes up runs through mouse capture.
+    /// </summary>
+    private void OnPickerMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DragDropSupport.FindDataContext<TaskViewModel>(sender) is not TaskViewModel task)
+        {
+            return;
+        }
+
+        picker ??= new WindowPicker(this, Win32ScreenApi.Instance)
+        {
+            Report = viewModel.Note,
+            CanPick = viewModel.IsPickable,
+        };
+        picker.Start(hwnd => viewModel.PickWindow(task, hwnd));
+
+        // The row must not also treat this as the start of a drag or a click-to-switch.
+        e.Handled = true;
     }
 
     // ------------------------------------------------------------------ menus

@@ -253,7 +253,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Puts a window into a task, moving it out of wherever it was.</summary>
+    /// <summary>
+    /// Puts a window into a task, moving it out of wherever it was. When the task is not the one
+    /// on screen the window is hidden immediately, so it behaves as though it had always belonged
+    /// there.
+    /// </summary>
     public void AssignWindow(WindowViewModel? window, TaskViewModel? task)
     {
         if (window is null || task is null)
@@ -261,14 +265,77 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        workspaces.AssignWindow(task.Id, window.Source);
-
-        // Assigning never hides: a window dropped onto a task that is not the active one stays
-        // where it is until the next switch, which is the predictable behaviour (§ D).
-        bool active = workspaces.State.ActiveTaskId == task.Id;
-        Say($"Added “{window.DisplayTitle}” to “{task.Name}”"
-            + (active ? "." : " — it stays visible until you switch tasks."));
+        AssignOutcome outcome = switchEngine.AssignWindowToTask(task.Id, window.Source);
+        SyncHiddenFlags();
+        Rebuild();
+        Say(Describe(outcome, window.DisplayTitle, task.Name));
     }
+
+    /// <summary>Puts a one-off note in the status line.</summary>
+    public void Note(string message) => Say(message);
+
+    /// <summary>
+    /// Whether a window handle is one the picker should offer. Being in the inventory means every
+    /// clause of the filter already passed, which is exactly the condition for accepting it — so
+    /// the highlight and the drop can never disagree.
+    /// </summary>
+    public bool IsPickable(nint hwnd) => windowsByHwnd.ContainsKey(hwnd);
+
+    /// <summary>
+    /// Takes the window the crosshair was released over and puts it into the task, explaining
+    /// itself when it will not.
+    /// </summary>
+    public void PickWindow(TaskViewModel? task, nint hwnd)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        if (hwnd == 0)
+        {
+            Say("No window there.");
+            return;
+        }
+
+        // Being in the inventory is the whitelist: it means every clause of the filter already
+        // passed. Only when the lookup misses is the tracker asked to name the reason.
+        if (!windowsByHwnd.TryGetValue(hwnd, out WindowViewModel? window))
+        {
+            Say(ExplainRefusal(hwnd));
+            return;
+        }
+
+        AssignWindow(window, task);
+    }
+
+    private string ExplainRefusal(nint hwnd) => tracker.ExplainOne(hwnd) switch
+    {
+        TrackableVerdict.OwnProcess => "That is HydraWin's own window.",
+        TrackableVerdict.Elevated =>
+            "That window belongs to an elevated app — HydraWin cannot hide it, so it cannot join "
+            + "a task.",
+        TrackableVerdict.NoTitle or TrackableVerdict.ToolWindow or TrackableVerdict.Owned =>
+            "That is not a window HydraWin can manage.",
+        TrackableVerdict.Cloaked or TrackableVerdict.NotVisible =>
+            "That window is not on screen any more.",
+
+        // Trackable, yet absent from the index: the sweep has not caught up with it yet.
+        _ => "That window is not in the list yet — try again in a moment.",
+    };
+
+    private static string Describe(AssignOutcome outcome, string window, string task) => outcome switch
+    {
+        AssignOutcome.AssignedAndHidden =>
+            $"Added “{window}” to “{task}” and hid it with the task.",
+        AssignOutcome.Assigned => $"Added “{window}” to “{task}”.",
+        AssignOutcome.AssignedButRefusedToHide =>
+            $"Added “{window}” to “{task}”, but it refused to hide — it is probably elevated.",
+        AssignOutcome.AssignedButUnreadablePlacement =>
+            $"Added “{window}” to “{task}”, but its position could not be read, so it was left "
+            + "visible rather than hidden with no way back.",
+        _ => $"Could not add “{window}” — that task no longer exists.",
+    };
 
     /// <summary>Removes a window from its task; it stays visible in every task thereafter.</summary>
     [RelayCommand]

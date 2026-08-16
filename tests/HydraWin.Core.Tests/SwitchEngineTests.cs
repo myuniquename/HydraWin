@@ -317,6 +317,127 @@ public sealed class SwitchEngineTests : IDisposable
         Assert.Equal(0x99, api.FocusedWindow);
     }
 
+    /// <summary>A live window on the fake desktop, not yet in any task.</summary>
+    private TrackedWindow LooseWindow(nint hwnd)
+    {
+        api.Add(hwnd, pid: (int)hwnd, path: AppPath, visible: true);
+        return new TrackedWindow
+        {
+            Hwnd = hwnd,
+            Pid = (int)hwnd,
+            ProcessPath = AppPath,
+            Title = $"window {hwnd:X}",
+        };
+    }
+
+    [Fact]
+    public void AssigningToAnInactiveTaskHidesTheWindowImmediately()
+    {
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        HydraWinTask beta = workspaces.CreateTask("Beta");
+        engine.SwitchTo(alpha.Id);
+
+        AssignOutcome outcome = engine.AssignWindowToTask(beta.Id, LooseWindow(0x30));
+
+        Assert.Equal(AssignOutcome.AssignedAndHidden, outcome);
+        Assert.False(api.Get(0x30)!.Visible);
+        Assert.Contains(0x30, journal.Snapshot().Select(e => e.Hwnd));
+    }
+
+    [Fact]
+    public void TheJournalIsOnDiskBeforeAnAssignedWindowIsHidden()
+    {
+        // The invariant again, on the path that hides without a switch. Same technique as the
+        // switch test: read the real file from inside Hide rather than trust call order.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        HydraWinTask beta = workspaces.CreateTask("Beta");
+        engine.SwitchTo(alpha.Id);
+
+        bool journalOnDisk = false;
+        api.OnHide = _ =>
+        {
+            string json = File.ReadAllText(journal.Path);
+            journalOnDisk = json.Contains("\"Hwnd\": 48", StringComparison.Ordinal);
+        };
+
+        engine.AssignWindowToTask(beta.Id, LooseWindow(0x30));
+
+        Assert.True(journalOnDisk, "the journal entry must be flushed before the window is hidden");
+    }
+
+    [Fact]
+    public void AssigningToTheActiveTaskLeavesTheWindowVisible()
+    {
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        engine.SwitchTo(alpha.Id);
+
+        AssignOutcome outcome = engine.AssignWindowToTask(alpha.Id, LooseWindow(0x30));
+
+        Assert.Equal(AssignOutcome.Assigned, outcome);
+        Assert.True(api.Get(0x30)!.Visible);
+        Assert.True(journal.IsEmpty);
+    }
+
+    [Fact]
+    public void AssigningWithNoActiveTaskLeavesTheWindowVisible()
+    {
+        // Nothing is hidden, so every window is meant to be on screen; there is nothing for this
+        // one to be hidden *for*.
+        HydraWinTask alpha = workspaces.CreateTask("Alpha");
+
+        AssignOutcome outcome = engine.AssignWindowToTask(alpha.Id, LooseWindow(0x30));
+
+        Assert.Equal(AssignOutcome.Assigned, outcome);
+        Assert.True(api.Get(0x30)!.Visible);
+        Assert.True(journal.IsEmpty);
+    }
+
+    [Fact]
+    public void MovingAVisibleWindowIntoAnInactiveTaskHidesIt()
+    {
+        // It belonged to the active task, so it is on screen; after the move it belongs to a task
+        // that is not, and should disappear with it.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11);
+        HydraWinTask beta = workspaces.CreateTask("Beta");
+        engine.SwitchTo(alpha.Id);
+
+        AssignOutcome outcome = engine.AssignWindowToTask(beta.Id, new TrackedWindow
+        {
+            Hwnd = 0x11,
+            Pid = 0x11,
+            ProcessPath = AppPath,
+            Title = "window 11",
+        });
+
+        Assert.Equal(AssignOutcome.AssignedAndHidden, outcome);
+        Assert.False(api.Get(0x11)!.Visible);
+        Assert.True(api.Get(0x10)!.Visible);
+    }
+
+    [Fact]
+    public void AnAssignedWindowThatRefusesToHideIsReportedAndLeavesNoJournalEntry()
+    {
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        HydraWinTask beta = workspaces.CreateTask("Beta");
+        engine.SwitchTo(alpha.Id);
+        api.RefuseToHide.Add(0x30);
+
+        AssignOutcome outcome = engine.AssignWindowToTask(beta.Id, LooseWindow(0x30));
+
+        Assert.Equal(AssignOutcome.AssignedButRefusedToHide, outcome);
+        Assert.True(api.Get(0x30)!.Visible);
+        Assert.DoesNotContain(0x30, journal.Snapshot().Select(e => e.Hwnd));
+    }
+
+    [Fact]
+    public void AssigningToATaskThatDoesNotExistDoesNothing()
+    {
+        AssignOutcome outcome = engine.AssignWindowToTask(Guid.NewGuid(), LooseWindow(0x30));
+
+        Assert.Equal(AssignOutcome.UnknownTask, outcome);
+        Assert.True(api.Get(0x30)!.Visible);
+    }
+
     [Fact]
     public void ShowAllBringsEverythingBackAndClearsTheActiveTask()
     {
