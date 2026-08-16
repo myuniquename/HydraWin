@@ -15,21 +15,26 @@ and ground rules — lives in `_plan.md`; this file is the only place task statu
 | 06 | `06_switch_engine.md` | done (2026-08-16, accepted 2026-08-16) |
 | 07 | `07_ui_shell.md` | done (2026-08-16) — accepted by the user |
 | 08 | `08_tray_and_hotkeys.md` | done (2026-08-16) — accepted by the user |
-| 09 | `09_notifications.md` | not started |
+| 09 | `09_notifications.md` | done (2026-08-16) — accepted by the user |
 | 10 | `10_hardening_polish.md` | not started |
 | 11 | `11_promote_docs.md` | not started |
 
 ## Progress
 
-**Tasks 01–08 are done and accepted (2026-08-16).** That is the whole of the non-negotiable core
-(01–07) plus the tray, global hotkeys and single-instance behaviour. HydraWin is usable daily as it
-stands: it tracks windows, switches tasks by click or hotkey, survives a crash through the journal,
-and lives in the tray.
+**Tasks 01–09 are done and accepted (2026-08-16).** That is the whole of the non-negotiable core
+(01–07), the tray, global hotkeys and single-instance behaviour, and notification badges. HydraWin
+is usable daily as it stands: it tracks windows, switches tasks by click or hotkey, survives a crash
+through the journal, lives in the tray, and tells you when a backgrounded window wants attention.
 
-**Outstanding: 09 (notifications), 10 (hardening and polish), 11 (promote `docs/`).** Without 09
-there are no badges; without 10 there is no settings UI and no rule editor — both of which several
-earlier tasks defer to. Task 11 has not run, so `docs/` is still empty and this folder is still the
-only home for the project's findings.
+**One thing task 09 carries forward unproven:** a Windows Terminal bell did not produce a badge in
+testing, which matters because that is the channel Claude Code notifies on. Everything else in that
+task was verified live, including badging a window HydraWin had hidden. Task 10 should confirm it
+against a real Claude Code session — see 09's record.
+
+**Outstanding: 10 (hardening and polish), 11 (promote `docs/`).** Without 10 there is no settings UI
+and no rule editor — both of which several earlier tasks defer to, task 09's notification rules
+included. Task 11 has not run, so `docs/` is still empty and this folder is still the only home for
+the project's findings.
 
 ## Where the detail is
 

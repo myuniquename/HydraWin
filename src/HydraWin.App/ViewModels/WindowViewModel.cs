@@ -65,6 +65,13 @@ public sealed partial class WindowViewModel : ObservableObject
     public partial bool IsHydraWinHidden { get; set; }
 
     /// <summary>
+    /// Why this window is waiting to be looked at, or empty when it is not. Drives the dot on the
+    /// row; clearing it is what focusing the window does.
+    /// </summary>
+    [ObservableProperty]
+    public partial string NotificationLabel { get; set; } = string.Empty;
+
+    /// <summary>
     /// True when this window refused to be hidden — in practice an elevated one, which UIPI stops
     /// a non-elevated HydraWin from touching. Task 10 gives it a proper treatment.
     /// </summary>

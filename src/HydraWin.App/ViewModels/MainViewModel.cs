@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using HydraWin.App.Services;
 using HydraWin.Core.Interop;
+using HydraWin.Core.Notifications;
 using HydraWin.Core.Persistence;
 using HydraWin.Core.Recovery;
 using HydraWin.Core.Tracking;
@@ -34,10 +35,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly WorkspaceStore store;
     private readonly WorkspaceService workspaces;
     private readonly SwitchEngine switchEngine;
+    private readonly NotificationHub notifications;
     private readonly WindowIconCache icons;
     private readonly Dictionary<nint, WindowViewModel> windowsByHwnd = [];
     private Guid? pendingRenameTaskId;
     private bool rebuildDeferred;
+    private int lastAnnouncedTotal;
     private bool disposed;
 
     public MainViewModel(RecoveryJournal journal, RestoreService restoreService)
@@ -94,6 +97,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         switchEngine = new SwitchEngine(
             workspaces, journal, restoreService, Win32WindowApi.Instance, hiddenWindows);
 
+        notifications = new NotificationHub(
+            workspaces,
+            () => workspaces.State.Settings.NotificationRules);
+        notifications.TaskBadgeChanged += (_, _) => RefreshBadges();
+
         switchEngine.SwitchCompleted += OnSwitchCompleted;
 
         tracker.WindowAppeared += OnWindowAppeared;
@@ -112,6 +120,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         AlwaysOnTop = workspaces.State.Settings.AlwaysOnTop;
         EnsureHotkeyDefaults();
+        EnsureNotificationDefaults();
 
         Rebuild();
     }
@@ -121,6 +130,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Whether a clean exit restores every hidden window first.</summary>
     public bool RestoreOnExit => workspaces.State.Settings.RestoreOnExit;
+
+    /// <summary>Whether a new notification also raises a tray balloon. Default off.</summary>
+    public bool NotificationToasts => workspaces.State.Settings.NotificationToasts;
 
     /// <summary>Whether closing the manager window hides it to the tray instead of exiting.</summary>
     public bool CloseToTray
@@ -161,6 +173,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (workspaces.State.Settings.Hotkeys.Count == 0)
         {
             workspaces.UpdateSettings(settings => settings.Hotkeys = HotkeyBinding.Defaults());
+        }
+    }
+
+    /// <summary>
+    /// Seeds the example rule on first run. All seeded rules are disabled: badges come from the
+    /// flash channel, which works for any application without a rule at all.
+    /// </summary>
+    private void EnsureNotificationDefaults()
+    {
+        if (workspaces.State.Settings.NotificationRules.Count == 0)
+        {
+            workspaces.UpdateSettings(
+                settings => settings.NotificationRules = NotificationRule.Defaults());
         }
     }
 
@@ -619,6 +644,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         UpdateTitle();
+
+        // The rows are new objects, so the badges have to be put back onto them.
+        RefreshBadges();
     }
 
     private void UpdateTitle()
@@ -680,6 +708,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         // ...and forgets it in the journal, so a window that died while hidden leaves no dead
         // handle behind in journal.json or the hidden set.
         switchEngine.OnWindowDisappeared(window.Hwnd);
+
+        // A closed window can hardly still be waiting for attention.
+        notifications.OnWindowDisappeared(window.Hwnd);
         Rebuild();
     }
 
@@ -690,10 +721,100 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             window.Title = e.NewTitle;
         }
+
+        // Rules are edge-triggered and none ship enabled, so this is normally a no-op.
+        notifications.OnTitleChanged(e.Window, e.OldTitle, e.NewTitle);
     }
 
-    private void OnForegroundChanged(object? sender, nint hwnd) =>
+    private void OnForegroundChanged(object? sender, nint hwnd)
+    {
         switchEngine.OnForegroundChanged(hwnd);
+
+        // Looking at a window is the only thing that clears its badge.
+        notifications.OnForegroundChanged(hwnd);
+    }
+
+    /// <summary>
+    /// A window's taskbar button flashed. Fed from the shell hook in the App layer.
+    /// </summary>
+    public void OnWindowFlashed(nint hwnd) =>
+        notifications.OnFlash(windowsByHwnd.GetValueOrDefault(hwnd)?.Source);
+
+    /// <summary>
+    /// HydraWin's own window came to the front, so no foreign window is in front any more.
+    /// </summary>
+    /// <remarks>
+    /// The tracker's WinEvent hook is registered with <c>WINEVENT_SKIPOWNPROCESS</c>, so it never
+    /// reports HydraWin taking focus. Without this the hub would go on believing the last window
+    /// the user visited was still foreground and would suppress its notifications for the rest of
+    /// the session — focus a task's window once, come back here, and that window could never badge
+    /// again.
+    /// </remarks>
+    public void OnManagerActivated() => notifications.OnForegroundChanged(0);
+
+    /// <summary>How many windows are waiting to be looked at, across every task.</summary>
+    public int TotalPendingNotifications => notifications.TotalPending;
+
+    /// <summary>Raised when the total changes, for the tray tooltip and the optional balloon.</summary>
+    public event EventHandler<string>? NotificationRaised;
+
+    /// <summary>
+    /// Switches to the task and focuses whichever of its windows most recently asked for attention.
+    /// </summary>
+    public void OpenNewestNotification(TaskViewModel? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<PendingNotification> pending = notifications.PendingFor(task.Id);
+        if (pending.Count == 0)
+        {
+            SwitchToCommand.Execute(task);
+            return;
+        }
+
+        // User-initiated, so taking focus is legitimate — and it is also what clears the badge.
+        switchEngine.SwitchToWindow(pending[0].Hwnd);
+    }
+
+    /// <summary>Pushes the hub's current state onto the rows.</summary>
+    private void RefreshBadges()
+    {
+        int previousTotal = lastAnnouncedTotal;
+
+        foreach (TaskViewModel task in Tasks)
+        {
+            IReadOnlyList<PendingNotification> pending = notifications.PendingFor(task.Id);
+            task.NotificationCount = pending.Count;
+            task.NotificationTooltip = pending.Count == 0
+                ? string.Empty
+                : string.Join(Environment.NewLine, pending.Select(p => p.Label));
+
+            foreach (WindowViewModel window in task.Windows)
+            {
+                window.NotificationLabel = notifications.LabelFor(window.Hwnd);
+            }
+        }
+
+        lastAnnouncedTotal = notifications.TotalPending;
+
+        if (lastAnnouncedTotal > previousTotal)
+        {
+            NotificationRaised?.Invoke(this, NewestLabel());
+        }
+    }
+
+    private string NewestLabel()
+    {
+        return Tasks
+            .Select(t => notifications.PendingFor(t.Id))
+            .Where(p => p.Count > 0)
+            .OrderByDescending(p => p[0].RaisedAt)
+            .Select(p => p[0].Label)
+            .FirstOrDefault() ?? string.Empty;
+    }
 
     private void OnWindowReattached(object? sender, AssignmentChangedEventArgs e)
     {

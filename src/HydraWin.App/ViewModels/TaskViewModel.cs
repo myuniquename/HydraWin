@@ -47,11 +47,15 @@ public sealed partial class TaskViewModel : ObservableObject
     public partial bool IsRenaming { get; set; }
 
     /// <summary>
-    /// Pending notifications on this task. Always zero for now — task 09 fills it from the flash
-    /// hook, and the badge slot in the row template is already reserved for it.
+    /// How many of this task's windows are waiting to be looked at. A badge means exactly that —
+    /// it clears when the window is focused, not when the task is switched to.
     /// </summary>
     [ObservableProperty]
     public partial int NotificationCount { get; set; }
+
+    /// <summary>One line per waiting window, for the badge's tooltip.</summary>
+    [ObservableProperty]
+    public partial string NotificationTooltip { get; set; } = string.Empty;
 
     /// <summary>
     /// The strongest activity among this task's windows, so a <em>collapsed</em> task still shows

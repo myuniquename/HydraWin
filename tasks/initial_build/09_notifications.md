@@ -1,6 +1,7 @@
 # Task 09 — NotificationHub: badges for windows that want attention
 
-Status: **not started**
+Status: **done (2026-08-16) — accepted by the user; the bell→flash leg is unverified, see the
+record**
 Depends on: task 03 (title-change events), task 06 (task↔window binding, SwitchTo), task 07
 (badge UI slot). **Read task 01's Record on completion first** — it settles whether flashes from
 hidden windows are observable and provides the literal Claude Code / Teams title strings the
@@ -128,6 +129,103 @@ suppression; mapping flash hwnd → task; regex timeout safety.
 
 ## Record on completion
 
-*(what was done, deviations and why, the final tuned regexes — copy them here verbatim, they are
-prime `docs/` promotion material — observed latency, test totals, and the list of
-new / modified / deleted files)*
+### Built to work with any application, at the user's instruction
+
+The user asked that this work the same for any Windows program, not just the two this file is
+written around. That mostly falls out of the signal: **`HSHELL_FLASH` is raised by the shell**, for
+any window whose taskbar button flashes, so HydraWin never has to know the application. Concretely:
+
+- No per-app code and no per-app rules on by default. Teams and Claude Code are not special cases;
+  they are two applications that happen to flash.
+- **The label is built from the window** — process file name plus live title — so an application
+  nobody has configured still produces a readable badge. A rule's `Label` only overrides it when a
+  rule actually fires.
+- **The flashing handle is resolved to its root** (`GetAncestor(GA_ROOT)`), so an app that flashes
+  an owned dialog rather than its main window still badges the right task.
+- **Repeat flashes coalesce.** `FLASHW_TIMERNOFG` flashes until the window is foregrounded; one
+  pending entry per window with its timestamp refreshed, so the count tracks windows needing
+  attention rather than signals received.
+
+### Deviations
+
+- **Badges clear only on focus, never on a task switch** — for every kind, not just title-kind. § C
+  says a switch clears flash-kind entries wholesale; the warning box at the top of this file says
+  that is wrong for Teams, which flashes once per unread run. Agreed with the user: the box wins,
+  and applying it uniformly is also what keeps behaviour predictable for applications nobody has
+  tested. A badge now means exactly "you have not looked at this window yet".
+- **No title rule ships enabled.** One disabled browser-unread rule is seeded as a worked example
+  to copy, since the editor is task 10 and an empty list gives a hand-editor nothing to start from.
+  The final regex, verbatim: `^\(\d+\)` for `chrome.exe`, `Enabled: false`.
+- **The task-02 placeholder is filled in and its `#pragma warning disable S2094` pair deleted**, per
+  `CLAUDE.md`. Its doc comment also asserted that Claude Code is title-only and its bell never
+  flashed — which task 01's re-test disproved — so that was corrected rather than carried forward.
+
+### A bug live testing found
+
+`WindowTracker` registers its WinEvent hook with `WINEVENT_SKIPOWNPROCESS`, so **no foreground event
+fires when HydraWin's own window is activated**. The hub therefore kept believing the last foreign
+window the user had visited was still in front, and suppressed its notifications *for the rest of
+the session*: focus a task's window once, come back to HydraWin, and that window could never badge
+again. Found by flashing a window that had been focused earlier and getting nothing.
+
+Fixed by having `MainWindow.OnActivated` report "nothing foreign is in front" to the hub, which is
+the other half of a signal the tracker structurally cannot provide. Covered by a regression test.
+
+### Verified live (my smoke test, throwaway windows, generic path only)
+
+| Check | Observed |
+| --- | --- |
+| Flash an assigned, visible-but-background window | badge on the task row, dot on the window row |
+| Flash the same window while **HydraWin had it hidden** | badges — the headline capability |
+| Flash an **unassigned** window | nothing, anywhere (§ 5) |
+| Flash the **foreground** window | nothing |
+| Flash the same window 5× | count stays 1 — coalesced |
+| Focus the window | badge clears |
+| **Switch to the task** | badge **survives** — the decisive rule |
+| Click the badge | switches, focuses the waiting window, badge clears |
+| Regression: focus a window, return to HydraWin, flash it again | badges (was silently suppressed before the fix) |
+
+### Not verified: the terminal bell as a flash source
+
+**I could not get a Windows Terminal bell to produce a badge, and I am not claiming it does.** After
+fixing the suppression bug above I retried with a fresh terminal ringing `[Console]::Out.Write(
+[char]7)` while backgrounded; the task row showed no dot for that window. `bellStyle` on this
+machine is `audible, window, taskbar`, so the configuration was right.
+
+What this does *not* establish: my harness had confounds — `wt` reuses an existing process and
+opens tabs rather than windows unless forced, the window title tracks the running command, and I
+could not observe from outside whether the bell actually rang. So this may be a Windows Terminal
+behaviour, a harness artefact, or something in HydraWin that the `FlashWindowEx` tests do not reach.
+
+It matters because it is the channel Claude Code depends on, so **§ Verification steps 3 and 4 are
+genuinely outstanding**, not merely delegated. They need a real Claude Code session going idle and a
+real Teams message from a second account — the same conditions task 01 used to measure both.
+
+### Build, tests, format
+
+- `dotnet build HydraWin.sln` — **0 warnings, 0 errors**, with the placeholder pragmas removed
+  rather than extended; `src/` now contains no `#pragma warning` at all.
+- `dotnet test --solution HydraWin.sln` — **224/224 passed** (198 before; 26 new across
+  `NotificationRuleTests` and `NotificationHubTests`, including the suppression regression and a
+  catastrophic-backtracking pattern proving the 100 ms timeout degrades to "no match").
+- `dotnet format --verify-no-changes` — exit 0.
+
+### Files
+
+**New** — `src/HydraWin.Core/Notifications/NotificationHub.cs`, `NotificationKind.cs`,
+`PendingNotification.cs`; `src/HydraWin.Core/Interop/IShellHookApi.cs`, `Win32ShellHookApi.cs`;
+`src/HydraWin.App/Services/ShellHookListener.cs`;
+`tests/HydraWin.Core.Tests/NotificationHubTests.cs`, `NotificationRuleTests.cs`.
+
+**Modified** — `src/HydraWin.Core/Notifications/NotificationRule.cs`,
+`src/HydraWin.Core/Interop/NativeMethods.cs`, `src/HydraWin.Core/Workspaces/SettingsModel.cs`,
+`src/HydraWin.App/App.xaml.cs`, `src/HydraWin.App/MainWindow.xaml` + `.xaml.cs`,
+`src/HydraWin.App/DragDropSupport.cs`, `src/HydraWin.App/Services/TrayIcon.cs`,
+`src/HydraWin.App/ViewModels/MainViewModel.cs`, `TaskViewModel.cs`, `WindowViewModel.cs`,
+`tasks/initial_build/09_notifications.md`, `tasks/initial_build/_status.md`.
+
+**Deleted** — none.
+
+### User walkthrough
+
+*(outstanding: § 3 Claude Code, § 4 Teams, § 6 soak — and the bell→flash question above)*

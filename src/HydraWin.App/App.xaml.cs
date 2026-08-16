@@ -16,6 +16,7 @@ public partial class App : Application
     private SingleInstance? singleInstance;
     private TrayIcon? tray;
     private HotkeyService? hotkeys;
+    private ShellHookListener? shellHook;
     private MainWindow? window;
     private bool forceRestoreOnExit;
 
@@ -68,10 +69,52 @@ public partial class App : Application
 
         tray = new TrayIcon(window.ViewModel, ShowWindow, ExitApplication);
         StartHotkeys();
+        StartShellHook();
+    }
+
+    /// <summary>
+    /// Subscribes to the shell's flash notifications — the channel that works for any application
+    /// without a rule or a per-app regex.
+    /// </summary>
+    private void StartShellHook()
+    {
+        if (window is null)
+        {
+            return;
+        }
+
+        shellHook = new ShellHookListener(
+            window,
+            Win32ShellHookApi.Instance,
+            hwnd => window.ViewModel.OnWindowFlashed(hwnd));
+
+        if (!shellHook.IsListening)
+        {
+            window.ViewModel.Note("The shell refused the notification hook — badges are off.");
+            return;
+        }
+
+        window.ViewModel.NotificationRaised += OnNotificationRaised;
+    }
+
+    private void OnNotificationRaised(object? sender, string label)
+    {
+        if (window is null || tray is null)
+        {
+            return;
+        }
+
+        tray.UpdatePendingCount(window.ViewModel.TotalPendingNotifications);
+
+        if (window.ViewModel.NotificationToasts && label.Length > 0)
+        {
+            tray.ShowBalloon("HydraWin", label);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        shellHook?.Dispose();
         hotkeys?.Dispose();
         tray?.Dispose();
         singleInstance?.Dispose();

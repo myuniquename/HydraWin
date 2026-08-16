@@ -50,6 +50,16 @@ internal sealed class TrayIcon : IDisposable
     /// <summary>Ends the app; the flag forces the restore even if the setting is off.</summary>
     private Action<bool> Exit { get; }
 
+    /// <summary>Shows the number of windows waiting to be looked at in the tray tooltip.</summary>
+    internal void UpdatePendingCount(int pending) =>
+        icon.ToolTipText = pending == 0
+            ? "HydraWin"
+            : $"HydraWin — {pending} window(s) waiting";
+
+    /// <summary>Raises a tray balloon. Only called when the user has turned toasts on.</summary>
+    internal void ShowBalloon(string title, string message) =>
+        icon.ShowBalloonTip(title, message, BalloonIcon.Info);
+
     /// <inheritdoc />
     public void Dispose()
     {

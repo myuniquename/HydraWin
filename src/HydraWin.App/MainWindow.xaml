@@ -69,6 +69,12 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Waiting for attention: the dot clears when the window is focused. -->
+                        <Ellipse Width="8" Height="8" Fill="#E5484D" Margin="4,0,0,0"
+                                 VerticalAlignment="Center"
+                                 ToolTip="{Binding NotificationLabel}"
+                                 Visibility="{Binding NotificationLabel,
+                                                      Converter={StaticResource StringToVisibility}}" />
                         <Border Background="#E6E9EC" CornerRadius="2" Padding="4,0" Margin="4,0,0,0"
                                 Visibility="{Binding IsHydraWinHidden,
                                                      Converter={StaticResource BoolToVisibility}}">
@@ -178,9 +184,12 @@
                                    Visibility="{Binding ActivityGlyph,
                                                         Converter={StaticResource StringToVisibility}}" />
 
-                        <!-- Reserved for task 09's notification badge. -->
-                        <Border Grid.Column="4" Background="#E5484D" CornerRadius="8" MinWidth="16"
-                                Height="16" Margin="0,0,6,0"
+                        <!-- Clicking the badge jumps to the newest waiting window, so it handles
+                             its own press rather than falling through to the row's switch. -->
+                        <Border Grid.Column="4" Tag="Badge" Background="#E5484D" CornerRadius="8"
+                                MinWidth="16" Height="16" Margin="0,0,6,0" Cursor="Hand"
+                                ToolTip="{Binding NotificationTooltip}"
+                                PreviewMouseLeftButtonDown="OnBadgeClick"
                                 Visibility="{Binding NotificationCount,
                                                      Converter={StaticResource CountToVisibility}}">
                             <TextBlock Text="{Binding NotificationCount}" Foreground="White"

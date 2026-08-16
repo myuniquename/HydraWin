@@ -1,34 +1,148 @@
+using System.Text.RegularExpressions;
+
 namespace HydraWin.Core.Notifications;
 
-// Temporary suppression: this type is an empty placeholder by design. Task 09 gives it its
-// members (ProcessFileName, TitleRegex, Kind, Label) and deletes this pragma pair with it.
-#pragma warning disable S2094 // Classes should not be empty
-
 /// <summary>
-/// A rule that turns a window signal into a task badge. Placeholder — task 09 fills this in
-/// alongside <c>NotificationKind</c> and <c>NotificationHub</c>.
+/// Turns a change of a window's title into a task badge.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Task 01 measured the two signal channels and found them <em>disjoint</em>, not
-/// primary/fallback, so task 09 implements both:
+/// The <em>secondary</em> channel, and none of these fire by default. Badges normally come from
+/// <see cref="NotificationKind.Attention"/> — the shell flash — which works for any application
+/// without a rule, a regex or a process name. Rules exist for programs that announce something in
+/// their title and never flash; task 10 adds an editor for them, and until then they are edited by
+/// hand in <c>state.json</c>.
+/// </para>
+/// <para>
+/// Two facts task 01 measured, both of which cost time to establish and neither of which should be
+/// re-derived from the older comments in this file's history:
 /// </para>
 /// <list type="bullet">
-///   <item>Claude Code in Windows Terminal is <b>title-only</b> — its terminal bell never
-///     flashed. The title is <c>&lt;marker&gt; &lt;session name&gt;</c>, cycling spinner frames
-///     <c>U+25D0</c>–<c>U+25D3</c> while busy and settling on <c>U+2733</c> when it finishes or
-///     waits for input.</item>
-///   <item>Teams is <b>flash-only</b> — it never changes its window title at all, so no title
-///     rule can work for it.</item>
+///   <item><b>Teams never changes its window title</b>, in any window state, on any event — so no
+///     title rule can ever badge it. It is handled entirely by the flash channel, which reaches
+///     <c>SW_HIDE</c>-hidden windows.</item>
+///   <item><b>Claude Code ships no title rule either.</b> Its terminal bell <em>does</em> raise a
+///     flash — an earlier negative result used an invalid <c>bellStyle</c> and so tested nothing —
+///     about 61 s after the session goes idle. The user accepted that latency in exchange for
+///     having no per-app regexes at all. The Claude Code title is still parsed, but only to show
+///     live progress in the overview (task 07 § F).</item>
 /// </list>
 /// <para>
-/// Both channels reach windows hidden with <c>SW_HIDE</c>. One caveat for the hub: Teams flashes
-/// only once per unread run, so a Teams badge must be cleared solely by the window gaining focus —
-/// clear it on a task switch and no further flash will ever re-raise it.
+/// Matching is <b>edge-triggered</b>: a rule fires when the new title matches and the previous one
+/// did not. A window sitting at a matching title therefore badges once, not on every repaint.
 /// </para>
 /// </remarks>
 public sealed class NotificationRule
 {
-}
+    /// <summary>How long a user-authored regex may run before it is abandoned.</summary>
+    internal static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(100);
 
-#pragma warning restore S2094 // Classes should not be empty
+    private Regex? compiled;
+    private string? compiledFor;
+
+    /// <summary>
+    /// Image file name to match, e.g. <c>chrome.exe</c>, compared case-insensitively. Empty or
+    /// <c>*</c> matches any process, which is how a rule is made application-agnostic.
+    /// </summary>
+    public string ProcessFileName { get; set; } = string.Empty;
+
+    /// <summary>The pattern the new title must match. An empty pattern never fires.</summary>
+    public string TitleRegex { get; set; } = string.Empty;
+
+    /// <summary>What kind of pending notification this raises.</summary>
+    public NotificationKind Kind { get; set; } = NotificationKind.Title;
+
+    /// <summary>
+    /// What the badge tooltip says when this rule fires. Empty falls back to the window's own
+    /// description, which is what every rule-less notification uses.
+    /// </summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>Whether the rule is live. Seeded rules ship off; the flash channel is the default.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// The rules HydraWin seeds into a fresh <c>state.json</c>.
+    /// </summary>
+    /// <remarks>
+    /// Exactly one, and it is <b>disabled</b>: a worked example to copy, because there is no rule
+    /// editor before task 10 and an empty list gives a hand-editor nothing to work from. Enabling
+    /// it is the user's call — a browser tab titled "(2) something" is indistinguishable from two
+    /// unread messages, which is the noise the task's soak test exists to catch.
+    /// </remarks>
+    public static List<NotificationRule> Defaults() =>
+    [
+        new NotificationRule
+        {
+            ProcessFileName = "chrome.exe",
+            TitleRegex = @"^\(\d+\)",
+            Kind = NotificationKind.Title,
+            Label = "Unread",
+            Enabled = false,
+        },
+    ];
+
+    /// <summary>
+    /// Whether this rule fires for a title change on a window of the given process.
+    /// </summary>
+    /// <remarks>
+    /// A malformed or slow hand-authored regex counts as "no match" rather than throwing. This runs
+    /// on the window-tracking path, where a bad pattern must cost its own rule and nothing else.
+    /// </remarks>
+    public bool Matches(string processFileName, string oldTitle, string newTitle)
+    {
+        if (!Enabled || string.IsNullOrEmpty(TitleRegex))
+        {
+            return false;
+        }
+
+        if (!MatchesProcess(processFileName))
+        {
+            return false;
+        }
+
+        Regex? regex = GetCompiledRegex();
+        if (regex is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            // Edge-triggered: the transition is the event, not the state.
+            return regex.IsMatch(newTitle ?? string.Empty)
+                && !regex.IsMatch(oldTitle ?? string.Empty);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
+
+    private bool MatchesProcess(string processFileName) =>
+        string.IsNullOrEmpty(ProcessFileName)
+        || ProcessFileName == "*"
+        || string.Equals(ProcessFileName, processFileName, StringComparison.OrdinalIgnoreCase);
+
+    private Regex? GetCompiledRegex()
+    {
+        if (compiled is not null && string.Equals(compiledFor, TitleRegex, StringComparison.Ordinal))
+        {
+            return compiled;
+        }
+
+        compiledFor = TitleRegex;
+        try
+        {
+            compiled = new Regex(TitleRegex, RegexOptions.IgnoreCase, RegexTimeout);
+        }
+        catch (ArgumentException)
+        {
+            // A pattern the user hand-edited into state.json. Task 10's editor will validate up
+            // front; here it simply never matches.
+            compiled = null;
+        }
+
+        return compiled;
+    }
+}

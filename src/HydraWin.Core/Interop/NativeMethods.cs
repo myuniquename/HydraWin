@@ -331,6 +331,21 @@ internal static partial class NativeMethods
         int cy,
         uint uFlags);
 
+    [LibraryImport("user32.dll", EntryPoint = "RegisterShellHookWindow", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool RegisterShellHookWindowCore(nint hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "DeregisterShellHookWindow", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DeregisterShellHookWindowCore(nint hWnd);
+
+    [LibraryImport(
+        "user32.dll",
+        EntryPoint = "RegisterWindowMessageW",
+        StringMarshalling = StringMarshalling.Utf16,
+        SetLastError = true)]
+    private static partial uint RegisterWindowMessageCore(string lpString);
+
     [LibraryImport("user32.dll", EntryPoint = "RegisterHotKey", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool RegisterHotKeyCore(nint hWnd, int id, uint fsModifiers, uint vk);
@@ -798,6 +813,60 @@ internal static partial class NativeMethods
         {
             DestroyIconCore(hIcon);
         }
+    }
+
+    /// <summary>
+    /// Subscribes a window to the shell's notifications and returns the message id they arrive as.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the application-agnostic notification channel. The shell posts
+    /// <c>HSHELL_FLASH</c> for <em>any</em> window whose taskbar button flashes, whether the app
+    /// called <c>FlashWindowEx</c> itself or a console rang the terminal bell — so HydraWin never
+    /// needs to know which program it is watching. Task 01 measured that it is delivered for
+    /// <c>SW_HIDE</c>-hidden windows too, which is what makes badging a hidden task possible at all.
+    /// </para>
+    /// <para>
+    /// The message id is not a constant: it comes from <c>RegisterWindowMessage</c> and differs
+    /// between sessions, so it must be read at run time and compared against, never hard-coded.
+    /// </para>
+    /// </remarks>
+    /// <returns>0 when the shell refused the registration.</returns>
+    internal static uint RegisterShellHook(nint hwnd)
+    {
+        if (hwnd == 0 || !RegisterShellHookWindowCore(hwnd))
+        {
+            return 0;
+        }
+
+        return RegisterWindowMessageCore("SHELLHOOK");
+    }
+
+    /// <summary>Unsubscribes a window from the shell's notifications.</summary>
+    internal static void UnregisterShellHook(nint hwnd)
+    {
+        if (hwnd != 0)
+        {
+            DeregisterShellHookWindowCore(hwnd);
+        }
+    }
+
+    /// <summary>
+    /// The top-level window a handle belongs to.
+    /// </summary>
+    /// <remarks>
+    /// An application may flash an owned dialog rather than its main window; resolving to the root
+    /// is what makes such a flash badge the right task instead of being discarded as untracked.
+    /// </remarks>
+    internal static nint RootWindow(nint hwnd)
+    {
+        if (hwnd == 0)
+        {
+            return 0;
+        }
+
+        nint root = GetAncestorCore(hwnd, GA_ROOT);
+        return root == 0 ? hwnd : root;
     }
 
     /// <summary>

@@ -64,6 +64,19 @@ public partial class MainWindow : Window
     /// <summary>Reports what startup recovery put back, without interrupting the user.</summary>
     public void ShowRecoveryNotice(RestoreSummary summary) => viewModel.ShowRecoveryNotice(summary);
 
+    /// <summary>
+    /// Tells the notification hub that no foreign window is in front any more.
+    /// </summary>
+    /// <remarks>
+    /// The tracker cannot report this: its hook skips our own process, so HydraWin taking focus is
+    /// invisible to it. This is the other half of that.
+    /// </remarks>
+    protected override void OnActivated(EventArgs e)
+    {
+        viewModel.OnManagerActivated();
+        base.OnActivated(e);
+    }
+
     /// <summary>Brings the window back from the tray.</summary>
     internal void ShowFromTray()
     {
@@ -161,10 +174,11 @@ public partial class MainWindow : Window
         dragging = false;
         pressedItem = null;
 
-        // The expand toggle, the rename box and the picker crosshair own their presses; none of
-        // them is a drag or a switch.
+        // The expand toggle, the rename box, the picker crosshair and the badge own their presses;
+        // none of them is a drag or a switch.
         if (DragDropSupport.IsInteractiveControl(e.OriginalSource)
-            || DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.PickerTag) is not null)
+            || DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.PickerTag) is not null
+            || DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.BadgeTag) is not null)
         {
             return;
         }
@@ -449,6 +463,19 @@ public partial class MainWindow : Window
         return TaskList.ItemContainerGenerator.ContainerFromItem(task) is DependencyObject container
             ? DragDropSupport.FindDescendantRow(container, DragDropSupport.TaskRowTag)
             : null;
+    }
+
+    /// <summary>
+    /// Clicking a badge jumps straight to the window that raised it, rather than merely switching
+    /// to the task — and focusing that window is also what clears it.
+    /// </summary>
+    private void OnBadgeClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DragDropSupport.FindDataContext<TaskViewModel>(sender) is TaskViewModel task)
+        {
+            viewModel.OpenNewestNotification(task);
+            e.Handled = true;
+        }
     }
 
     // ------------------------------------------------------------------ picker

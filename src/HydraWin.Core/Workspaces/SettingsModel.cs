@@ -53,4 +53,18 @@ public sealed class SettingsModel
     /// hand-editable thereafter; an entry that cannot be understood is skipped, not fatal.
     /// </summary>
     public List<HotkeyBinding> Hotkeys { get; set; } = [];
+
+    /// <summary>
+    /// Title-watching notification rules. Seeded with
+    /// <see cref="Notifications.NotificationRule.Defaults"/>, all of them disabled: badges come
+    /// from the shell flash, which needs no rule and works for any application. Task 10 adds the
+    /// editor.
+    /// </summary>
+    public List<Notifications.NotificationRule> NotificationRules { get; set; } = [];
+
+    /// <summary>
+    /// Whether a new notification also raises a tray balloon. Default off — the badge is the
+    /// product, and toasts are noise until asked for.
+    /// </summary>
+    public bool NotificationToasts { get; set; }
 }
