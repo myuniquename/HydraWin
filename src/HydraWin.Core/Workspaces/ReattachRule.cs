@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using HydraWin.Core.Tracking;
 
 namespace HydraWin.Core.Workspaces;
 
@@ -21,22 +22,19 @@ public sealed class ReattachRule
     /// so must not end up baked into a pattern.
     /// </summary>
     /// <remarks>
-    /// <c>●</c> and <c>*</c> are the usual "unsaved changes" markers (VS Code, Notepad++).
-    /// <c>✳</c> and the <c>◐◑◒◓</c> spinner frames are Claude Code's, measured in task 01: an
-    /// interactive session titles its terminal <c>&lt;marker&gt; &lt;session name&gt;</c> and
-    /// advances the spinner about once a second, so a rule generated from a busy terminal would
-    /// otherwise capture whichever frame happened to be showing and never match again. Task 07
-    /// § F treats exactly these glyphs as volatile too.
+    /// <c>●</c> and <c>*</c> are the usual "unsaved changes" markers (VS Code, Notepad++). The
+    /// Claude Code markers come from <see cref="ClaudeCodeTitle"/> rather than being repeated
+    /// here, so task 01's measured glyph set has exactly one home: an interactive session titles
+    /// its terminal <c>&lt;marker&gt; &lt;session name&gt;</c> and advances the spinner about once
+    /// a second, so a rule generated from a busy terminal would otherwise capture whichever frame
+    /// happened to be showing and never match again.
     /// </remarks>
     private static readonly char[] VolatileTitleMarkers =
     [
-        '●', // ● unsaved changes
-        '*',      // unsaved changes
-        '✳', // ✳ Claude Code idle / waiting for input
-        '◐', // ◐ Claude Code spinner
-        '◑', // ◑
-        '◒', // ◒
-        '◓', // ◓
+        '●', // the unsaved-changes dot, as used by VS Code
+        '*', // the unsaved-changes asterisk, as used by most other editors
+        ClaudeCodeTitle.IdleMarker,
+        .. ClaudeCodeTitle.SpinnerFrames,
     ];
 
     private Regex? compiled;

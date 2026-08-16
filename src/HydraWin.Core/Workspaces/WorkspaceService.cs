@@ -166,12 +166,21 @@ public sealed class WorkspaceService
     /// Assigns a live window to a task, creating its re-attach rule. A window already assigned
     /// elsewhere is moved rather than duplicated.
     /// </summary>
+    /// <remarks>
+    /// "Moved" has to mean the old assignment is <em>removed</em>, not merely unbound. Unbinding
+    /// alone would leave the previous task holding a rule that still recognises this window, and
+    /// after the next restart both tasks would claim it — whichever re-attached first would win.
+    /// This is the <see cref="UnassignWindow"/> path, deliberately not the
+    /// <see cref="OnWindowDisappeared"/> one, which keeps the rule on purpose.
+    /// </remarks>
     public WindowAssignment? AssignWindow(Guid taskId, TrackedWindow window)
     {
         ArgumentNullException.ThrowIfNull(window);
 
         WindowAssignment assignment;
         HydraWinTask task;
+        HydraWinTask? previousTask;
+        WindowAssignment? previousAssignment;
 
         lock (gate)
         {
@@ -182,7 +191,7 @@ public sealed class WorkspaceService
             }
 
             task = target;
-            RemoveBindingLocked(window.Hwnd);
+            (previousTask, previousAssignment) = RemoveAssignmentLocked(window.Hwnd);
 
             assignment = new WindowAssignment
             {
@@ -196,8 +205,57 @@ public sealed class WorkspaceService
         }
 
         Persist();
+
+        // The move's two halves are reported separately so the UI can drop the old row and add the
+        // new one without needing to know that a move happened.
+        if (previousTask is not null && previousAssignment is not null && previousTask != task)
+        {
+            Raise(
+                WindowUnassigned,
+                new AssignmentChangedEventArgs(previousTask, previousAssignment, null));
+        }
+
         Raise(WindowAssigned, new AssignmentChangedEventArgs(task, assignment, window));
         return assignment;
+    }
+
+    /// <summary>
+    /// Moves a task to a new position and renumbers every <see cref="HydraWinTask.Order"/> from 1.
+    /// Positions outside the list are clamped; an unknown id is ignored.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="HydraWinTask.Order"/> is load-bearing beyond display — task 08 binds
+    /// <c>Ctrl+Alt+1..9</c> to it — so this renumbers the whole list rather than leaving gaps.
+    /// </remarks>
+    public void ReorderTask(Guid taskId, int newIndex)
+    {
+        lock (gate)
+        {
+            List<HydraWinTask> ordered = [.. State.OrderedTasks];
+            int current = ordered.FindIndex(t => t.Id == taskId);
+            if (current < 0)
+            {
+                return;
+            }
+
+            int target = Math.Clamp(newIndex, 0, ordered.Count - 1);
+            if (target == current)
+            {
+                return;
+            }
+
+            HydraWinTask task = ordered[current];
+            ordered.RemoveAt(current);
+            ordered.Insert(target, task);
+
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                ordered[i].Order = i + 1;
+            }
+        }
+
+        Persist();
+        Raise(TasksChanged);
     }
 
     /// <summary>Removes a window's assignment entirely — the rule goes with it.</summary>
@@ -208,14 +266,11 @@ public sealed class WorkspaceService
 
         lock (gate)
         {
-            (task, assignment) = RemoveBindingLocked(hwnd);
+            (task, assignment) = RemoveAssignmentLocked(hwnd);
             if (task is null || assignment is null)
             {
                 return;
             }
-
-            task.Assignments.Remove(assignment);
-            taskByAssignmentId.Remove(assignment.Id);
         }
 
         Persist();
@@ -311,6 +366,23 @@ public sealed class WorkspaceService
 
     /// <summary>Forces any pending write to disk. Call on shutdown.</summary>
     public void Flush() => store.Flush();
+
+    /// <summary>
+    /// Removes a window's assignment outright — binding, rule and all — so nothing is left to
+    /// re-claim it later.
+    /// </summary>
+    private (HydraWinTask? Task, WindowAssignment? Assignment) RemoveAssignmentLocked(nint hwnd)
+    {
+        (HydraWinTask? task, WindowAssignment? assignment) = RemoveBindingLocked(hwnd);
+        if (task is null || assignment is null)
+        {
+            return (null, null);
+        }
+
+        task.Assignments.Remove(assignment);
+        taskByAssignmentId.Remove(assignment.Id);
+        return (task, assignment);
+    }
 
     /// <summary>Unbinds a window, leaving its assignment and rule in place.</summary>
     private (HydraWinTask? Task, WindowAssignment? Assignment) RemoveBindingLocked(nint hwnd)

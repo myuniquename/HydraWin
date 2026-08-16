@@ -105,6 +105,29 @@ public sealed class SwitchEngine
     }
 
     /// <summary>
+    /// Switches to whichever task owns this window and focuses that window specifically. Backs the
+    /// UI's <em>Focus</em> command, and in task 09 the click-to-jump on a notification badge.
+    /// </summary>
+    /// <returns>The switch summary, or <see langword="default"/> if the window belongs to no task.</returns>
+    public SwitchSummary SwitchToWindow(nint hwnd)
+    {
+        HydraWinTask? owner = workspaces.FindTaskOf(hwnd);
+        if (owner is null)
+        {
+            // Unassigned windows are visible in every task, so there is nothing to switch to —
+            // focusing it is the whole of the job.
+            windowApi.TryFocus(hwnd);
+            return default;
+        }
+
+        // Focus this window rather than the task's last-active one: the user named it.
+        owner.LastActiveHwnd = hwnd;
+        SwitchSummary summary = SwitchTo(owner.Id);
+        windowApi.TryFocus(hwnd);
+        return summary;
+    }
+
+    /// <summary>
     /// Brings back everything HydraWin has hidden and clears the active task. Used by the "show
     /// all" command and before a task is deleted.
     /// </summary>

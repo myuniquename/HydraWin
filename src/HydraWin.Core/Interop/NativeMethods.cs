@@ -244,6 +244,22 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetWindowPlacementCore(nint hWnd, ref WindowPlacement lpwndpl);
 
+    [LibraryImport(
+        "shell32.dll",
+        EntryPoint = "ExtractIconExW",
+        StringMarshalling = StringMarshalling.Utf16,
+        SetLastError = true)]
+    private static partial uint ExtractIconExCore(
+        string lpszFile,
+        int nIconIndex,
+        out nint phiconLarge,
+        out nint phiconSmall,
+        uint nIcons);
+
+    [LibraryImport("user32.dll", EntryPoint = "DestroyIcon", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DestroyIconCore(nint hIcon);
+
     // ---------------------------------------------------------------- wrappers
 
     /// <summary>Every top-level window on the desktop, in z-order.</summary>
@@ -435,6 +451,48 @@ internal static partial class NativeMethods
         int error = Marshal.GetLastWin32Error();
 
         return new ShowWindowResult(IsWindowVisibleCore(hwnd) == wantVisible, error);
+    }
+
+    /// <summary>
+    /// Pulls the small icon out of an executable, for the window rows in the UI.
+    /// </summary>
+    /// <remarks>
+    /// <c>ExtractIconExW</c> is used rather than <c>SHGetFileInfo</c> because its signature is
+    /// blittable and so works with <c>[LibraryImport]</c>; <c>SHFILEINFOW</c>'s inline character
+    /// buffers would have forced runtime marshalling. The caller owns the returned handle and must
+    /// pass it to <see cref="DestroyIcon"/>.
+    /// </remarks>
+    /// <returns>
+    /// <see langword="false"/> for an empty path — a protected process, per task 01 — or any file
+    /// with no icon, leaving the UI to fall back to a generic glyph.
+    /// </returns>
+    internal static bool TryExtractSmallIcon(string processPath, out nint hIcon)
+    {
+        hIcon = 0;
+        if (string.IsNullOrEmpty(processPath))
+        {
+            return false;
+        }
+
+        ExtractIconExCore(processPath, 0, out nint large, out nint small, 1);
+
+        // Only the small icon is wanted; the large one is still allocated and has to go back.
+        if (large != 0)
+        {
+            DestroyIconCore(large);
+        }
+
+        hIcon = small;
+        return small != 0;
+    }
+
+    /// <summary>Releases an icon handle from <see cref="TryExtractSmallIcon"/>.</summary>
+    internal static void DestroyIcon(nint hIcon)
+    {
+        if (hIcon != 0)
+        {
+            DestroyIconCore(hIcon);
+        }
     }
 
     /// <summary>Releases every hook in the list and empties it. Zero handles are skipped.</summary>

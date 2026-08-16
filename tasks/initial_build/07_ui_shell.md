@@ -1,6 +1,6 @@
 # Task 07 — UI shell: task table, unassigned pane, drag-and-drop
 
-Status: **not started**
+Status: **implemented; awaiting the user's acceptance walkthrough**
 Depends on: task 03 (WindowTracker events), task 04 (WorkspaceService), task 06 (SwitchEngine).
 
 ## Motivation
@@ -114,6 +114,12 @@ Two measured constraints:
 
 ## Verification
 
+**The acceptance walkthrough is run by the user, on their own desktop and their own windows.**
+This is the first task where that is true — 01–06 were driven against scratch windows. The
+implementer's job is to smoke-test the same eight steps first against throwaway windows, reset
+`%APPDATA%\HydraWin`, and hand over a clean app; the user's run is the verification of record and
+their observed results are what go in **Record on completion**.
+
 Full walkthrough on a real desktop (record each step's observed result):
 1. Start HydraWin → unassigned pane lists the open real windows (per task 03 filter), tasks empty.
 2. Create tasks *Alpha*, *Beta*. Drag a browser + a terminal into Alpha; VS Code + browser into
@@ -136,5 +142,102 @@ Full walkthrough on a real desktop (record each step's observed result):
 
 ## Record on completion
 
-*(what was done, deviations and why — including whether GongSolutions was pulled in — walkthrough
-results, screenshots into `screenshots/`, and the list of new / modified / deleted files)*
+### What was built
+
+The harness is gone; `MainWindow` is now the real interface. `MainViewModel` was rewritten around
+`TaskViewModel` / `WindowViewModel` / an unassigned collection, wired to the Core events that
+already existed. Structural changes (task created, window assigned, switch completed) rebuild the
+task list; title changes deliberately do not — they go through a handle-keyed dictionary and touch
+one row, because task 01 measured ~1 title event per second per busy Claude Code terminal.
+
+### Deviations, and why
+
+- **Drag-and-drop is hand-rolled WPF. `GongSolutions.WPF.DragDrop` was not pulled in.** § C allows
+  it as a fallback; it was declined because a task row carries two mouse semantics on one element —
+  a click switches, a drag reorders — and Gong takes over `PreviewMouseDown`/`Move` on the controls
+  it attaches to. Its one big saving (the default `ObservableCollection` reorder handler) applies
+  to only one of the four drop kinds here. `DragDropSupport.cs` holds the threshold, the two data
+  formats, the hit-testing and the highlight/insertion adorners.
+- **Window icons come from `Core/Interop`, not `System.Drawing`.** § B suggested
+  `Icon.ExtractAssociatedIcon` in an App service. That is Win32-by-proxy above Core (repo rule) and
+  needs the `System.Drawing.Common` package, so `ExtractIconExW` joined `NativeMethods` behind a new
+  `IIconSource`, and the App turns the `HICON` into an `ImageSource` with plain WPF
+  (`Imaging.CreateBitmapSourceFromHIcon`). `ExtractIconExW` was chosen over `SHGetFileInfo` because
+  its signature is blittable and so works with `[LibraryImport]`.
+- **Four small Core additions** rather than App-layer workarounds, so they could be unit-tested:
+  `ClaudeCodeTitle` (marker parsing, and now the single home for task 01's measured glyphs, which
+  `ReattachRule` references instead of repeating), `WorkspaceService.ReorderTask`,
+  `SwitchEngine.SwitchToWindow`, and the `AssignWindow` fix below.
+
+### Bugs found and fixed
+
+- **Moving a window between tasks left an orphaned rule.** `AssignWindow` called
+  `RemoveBindingLocked`, which unbinds but leaves the old assignment *and its re-attach rule* in the
+  previous task. Nothing had exercised it, because until drag-and-drop existed nothing could move a
+  window. The consequence was two tasks holding a rule for the same window, the old one silently
+  re-claiming it after a restart. Fixed to remove the assignment outright and raise
+  `WindowUnassigned` for the old task. The restart step below is the direct proof: after moving
+  HW-CH3 from Alpha to Beta, `state.json` shows `"Name": "Alpha"` with `"Assignments": []`.
+- **The active-task highlight never appeared.** `Background`, `BorderBrush` and `BorderThickness`
+  were set as local attributes on the task-row `Border` as well as in the `IsActive` `DataTrigger`,
+  and in WPF a local value outranks a style trigger. Every visual default moved into the `Style`.
+  Caught by comparing a screenshot against the spec, not by the build.
+- **The rename box appeared and vanished instantly.** `CreateTask` set `IsRenaming` on the new row,
+  but the `TasksChanged` rebuild that followed replaced the row object. `Rebuild` now carries
+  `IsExpanded` *and* `IsRenaming` across.
+
+### Smoke test (implementer, throwaway windows)
+
+Against three Chrome windows, two Windows Terminal windows and a scratch VS Code window that I
+spawned. Steps 1–7 of § Verification plus a synthetic version of step 8; the user's windows were
+never assigned and stayed visible throughout.
+
+| Step | Observed |
+| --- | --- |
+| 1 | 19 windows listed in the unassigned pane, icons resolved for chrome/Code/explorer/Notepad++/Signal, tasks empty |
+| 2 | Alpha and Beta created and named; drags moved HW-CH1 + HW-CH3 into Alpha, HW-CH2 + VS Code into Beta; counts followed, rows left the unassigned pane |
+| 3 | Alpha → Beta: `hidden 2, shown 2`. Beta → Alpha: HW-CH1 back at **exactly** `(-2206,816)-(-217,2300)` and HW-CH3 at `(-2181,841)-(-187,2328)` — byte-identical to the pre-switch snapshot. Journal held exactly the two hidden windows with full placements while they were hidden |
+| 4 | HW-CH3 dragged Alpha → Beta while Alpha active: stayed visible, status said *"it stays visible until you switch tasks"*. After Alpha → Beta → Alpha it was hidden with Beta |
+| 5 | HW-CH1 dragged to the unassigned pane: stayed visible, and still visible after switching to Beta |
+| 6 | Beta dragged above Alpha → `Order` 1/2 swapped and persisted. Restart: order, names and assignments restored; *"Re-attached “Welcome - scratch - Visual Studio Code” to “Beta”"* in the status bar |
+| 7 | Delete Beta with its 3 windows hidden → dialog read *"Its 3 window(s) will be un-hidden and returned to Unassigned. No window is closed."*; all three reappeared at unchanged rects, journal empty, none closed |
+| 8 | Synthetic only — a window renamed to `◐ building hydrawin` showed the blue `◐` with the marker stripped from the label, and the marker rolled up to the **collapsed** task row |
+
+Exiting HydraWin restored every hidden window and left `journal.json` as `[]`. `%APPDATA%\HydraWin`
+was reset before handover. Screenshots: `screenshots/07-task-table.png`,
+`07-active-task-and-reattach.png`, `07-progress-rollup-collapsed.png`.
+
+**Not covered by the smoke test:** step 8 with a real Claude Code session (needs the user's
+machine — that is the point of § F), and the `Unmanageable` / elevated-window path, which no window
+triggered; task 01's elevated Task Manager measurement remains the evidence for it.
+
+### Build, tests, format
+
+- `dotnet build HydraWin.sln` — **0 warnings, 0 errors**.
+- `dotnet test --solution HydraWin.sln` — **159/159 passed** (132 before; 27 new: 9 for
+  `ClaudeCodeTitle`, 11 for reordering and the move fix, 3 for `SwitchToWindow`, plus the existing
+  suites re-run).
+- `dotnet format --verify-no-changes` — exit 0. All three `spikes/` projects still build.
+
+### User walkthrough
+
+*(to be filled in with the user's observed results for steps 1–8)*
+
+### Files
+
+**New** — `src/HydraWin.Core/Tracking/ClaudeCodeTitle.cs`, `src/HydraWin.Core/Interop/IIconSource.cs`,
+`src/HydraWin.Core/Interop/Win32IconSource.cs`, `src/HydraWin.App/Converters.cs`,
+`src/HydraWin.App/DragDropSupport.cs`, `src/HydraWin.App/Services/WindowIconCache.cs`,
+`src/HydraWin.App/ViewModels/TaskViewModel.cs`, `src/HydraWin.App/ViewModels/WindowViewModel.cs`,
+`tests/HydraWin.Core.Tests/ClaudeCodeTitleTests.cs`,
+`tests/HydraWin.Core.Tests/TaskOrderingTests.cs`, and `tasks/initial_build/screenshots/` (3 files).
+
+**Modified** — `src/HydraWin.App/MainWindow.xaml`, `src/HydraWin.App/MainWindow.xaml.cs`,
+`src/HydraWin.App/ViewModels/MainViewModel.cs`, `src/HydraWin.Core/Interop/NativeMethods.cs`,
+`src/HydraWin.Core/Workspaces/ReattachRule.cs`, `src/HydraWin.Core/Workspaces/SwitchEngine.cs`,
+`src/HydraWin.Core/Workspaces/WorkspaceService.cs`,
+`tests/HydraWin.Core.Tests/SwitchEngineTests.cs`, `tasks/initial_build/07_ui_shell.md`,
+`tasks/initial_build/_plan.md`.
+
+**Deleted** — none. `UnassignedListViewModel` was not needed: the unassigned pane is a plain
+collection on `MainViewModel`, so it never became a type.

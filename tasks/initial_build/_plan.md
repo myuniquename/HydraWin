@@ -116,6 +116,11 @@ undoing the core. If the flash-hook half of 09 is a dead end, the title-watcher 
 - Panic restore during development: `hydrawin.exe --restore-all` (works from task 05 onward);
   until then, spike/test programs must re-show every window they hide before exiting, even on
   Ctrl+C (`Console.CancelKeyPress`) and on unhandled exceptions.
+- **From task 07 onward the acceptance walkthrough is the user's to run**, on their own desktop and
+  their own windows — the UI tasks are about how the thing feels to use, which cannot be delegated.
+  The implementer still smoke-tests the same steps first against throwaway windows and resets
+  `%APPDATA%\HydraWin` before handing over, so the user meets a clean app rather than the rough
+  edges. The user's observed results are what go in **Record on completion**.
 - Manual verification scripts in each task name the apps to test with: Windows Terminal
   (with `"bellStyle"` including `"taskbar"` — note `"taskbarFlash"` is **not** a valid value and
   is silently ignored), VS Code, a Chromium browser (Edge or Chrome,

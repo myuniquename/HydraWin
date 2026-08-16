@@ -3,115 +3,279 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:HydraWin.App"
         xmlns:vm="clr-namespace:HydraWin.App.ViewModels"
-        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="{Binding Title}" Height="600" Width="900"
-        MinHeight="300" MinWidth="480">
-    <!--
-        Task 03 debug harness. Task 07 replaces this whole body with the task table, unassigned
-        pane and toolbar.
-    -->
-    <DockPanel Margin="8">
+        MinHeight="300" MinWidth="640"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
 
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-            <CheckBox Content="Reconciliation sweep"
-                      IsChecked="{Binding ReconciliationEnabled}"
-                      VerticalAlignment="Center" />
-            <Button Content="Refresh rejections"
-                    Command="{Binding RefreshRejectedCommand}"
-                    Margin="12,0,0,0" Padding="8,2" />
-            <Button Content="Seed demo tasks"
-                    Command="{Binding SeedDemoTasksCommand}"
-                    Margin="12,0,0,0" Padding="8,2" />
-            <Button Content="Seed switch drill"
-                    Command="{Binding SeedSwitchDrillCommand}"
-                    Margin="6,0,0,0" Padding="8,2" />
-            <Button Content="Flush state"
-                    Command="{Binding FlushStateCommand}"
-                    Margin="6,0,0,0" Padding="8,2" />
-            <Button Content="Clear tasks"
-                    Command="{Binding ClearTasksCommand}"
-                    Margin="6,0,0,0" Padding="8,2" />
-            <Button Content="Hide selected (journaled)"
-                    Command="{Binding HideSelectedCommand}"
-                    Margin="18,0,0,0" Padding="8,2" />
-            <Button Content="Restore all"
-                    Command="{Binding RestoreAllWindowsCommand}"
-                    Margin="6,0,0,0" Padding="8,2" />
-        </StackPanel>
+    <Window.Resources>
+        <local:HexToBrushConverter x:Key="HexToBrush" />
+        <local:CountToVisibilityConverter x:Key="CountToVisibility" />
+        <local:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
+        <local:StringToVisibilityConverter x:Key="StringToVisibility" />
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-            <TextBlock Text="Switch to:" VerticalAlignment="Center" Margin="0,0,6,0" />
-            <!-- CommandParameter must be typed: a bare "1" is a string and RelayCommand&lt;int&gt; rejects it. -->
-            <Button Content="1" Command="{Binding SwitchToOrderCommand}"
-                    Padding="10,2" Margin="0,0,4,0">
-                <Button.CommandParameter><sys:Int32>1</sys:Int32></Button.CommandParameter>
-            </Button>
-            <Button Content="2" Command="{Binding SwitchToOrderCommand}"
-                    Padding="10,2" Margin="0,0,4,0">
-                <Button.CommandParameter><sys:Int32>2</sys:Int32></Button.CommandParameter>
-            </Button>
-            <Button Content="3" Command="{Binding SwitchToOrderCommand}"
-                    Padding="10,2" Margin="0,0,4,0">
-                <Button.CommandParameter><sys:Int32>3</sys:Int32></Button.CommandParameter>
-            </Button>
-            <Button Content="4" Command="{Binding SwitchToOrderCommand}"
-                    Padding="10,2" Margin="0,0,12,0">
-                <Button.CommandParameter><sys:Int32>4</sys:Int32></Button.CommandParameter>
-            </Button>
-            <Button Content="Delete active task"
-                    Command="{Binding DeleteActiveTaskCommand}" Padding="8,2" Margin="0,0,12,0" />
-            <CheckBox Content="Crash after journal flush"
-                      IsChecked="{Binding CrashAfterJournalFlush}"
-                      VerticalAlignment="Center" Foreground="#B00000" />
-        </StackPanel>
+        <!--
+            One window row, shared by the task list and the unassigned pane. Tagged so the
+            drag-and-drop code can find it in the visual tree without named-element plumbing.
 
-        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
-            <TextBlock Text="{Binding Status}" Opacity="0.75" />
-            <TextBlock Text="{Binding RejectionSummary}" Opacity="0.75" />
-            <TextBlock Text="{Binding RecoveryNotice}" FontWeight="Bold" Foreground="#B35C00" />
-        </StackPanel>
+            The context menus use Click handlers rather than command bindings on purpose: a
+            ContextMenu sits in its own visual tree, so a RelativeSource walk to this Window
+            never reaches it. The handlers also let the menu adapt to the row on opening.
+        -->
+        <DataTemplate x:Key="WindowRow" DataType="{x:Type vm:WindowViewModel}">
+            <Border Tag="WindowRow" Background="Transparent" Padding="4,3" CornerRadius="3"
+                    Margin="0,1">
+                <Border.ContextMenu>
+                    <ContextMenu Opened="OnWindowMenuOpened">
+                        <MenuItem Header="_Focus" Click="OnFocusWindowClick" />
+                        <Separator />
+                        <MenuItem Header="_Unassign" Tag="Unassign" Click="OnUnassignWindowClick" />
+                        <MenuItem Header="_Move to" Tag="MoveTo" />
+                    </ContextMenu>
+                </Border.ContextMenu>
 
-        <DockPanel DockPanel.Dock="Bottom" Height="150" Margin="0,8,0,0">
-            <TextBlock DockPanel.Dock="Top" Text="Tasks (task 04)" FontWeight="Bold"
-                       Margin="0,0,0,4" />
-            <ListBox ItemsSource="{Binding TaskLines}" FontFamily="Consolas" FontSize="11"
-                     VirtualizingStackPanel.IsVirtualizing="False" />
-        </DockPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-        <Grid>
+                    <!-- The app icon, over a generic dot for processes that have none. -->
+                    <Grid Grid.Column="0" Width="16" Height="16" VerticalAlignment="Center"
+                          Margin="0,0,6,0">
+                        <Ellipse Width="8" Height="8" Fill="#9AA5B1" />
+                        <Image Source="{Binding Icon}" />
+                    </Grid>
+
+                    <!-- The live Claude Code marker; animates for free as title events arrive. -->
+                    <TextBlock Grid.Column="1" Text="{Binding ActivityGlyph}" FontSize="12"
+                               Margin="0,0,4,0" VerticalAlignment="Center" Foreground="#4C8DFF"
+                               Visibility="{Binding ActivityGlyph,
+                                                    Converter={StaticResource StringToVisibility}}" />
+
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DisplayTitle}" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Title}" />
+                        <TextBlock Text="{Binding ProcessName}" Opacity="0.55" FontSize="10" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Background="#E6E9EC" CornerRadius="2" Padding="4,0" Margin="4,0,0,0"
+                                Visibility="{Binding IsHydraWinHidden,
+                                                     Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="hidden" FontSize="10" Opacity="0.7" />
+                        </Border>
+                        <Border Background="#FFE2C2" CornerRadius="2" Padding="4,0" Margin="4,0,0,0"
+                                ToolTip="This window refused to be hidden — it is probably elevated."
+                                Visibility="{Binding IsUnmanageable,
+                                                     Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="elevated" FontSize="10" Opacity="0.8" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- One task row: header, then its windows when expanded. -->
+        <DataTemplate x:Key="TaskRow" DataType="{x:Type vm:TaskViewModel}">
+            <Border Tag="TaskRow" Margin="0,0,0,4" CornerRadius="4" Padding="0,0,0,2">
+                <!--
+                    Every visual default belongs in the style, not on the element: a local value
+                    outranks a style trigger in WPF, so setting Background here would silently
+                    beat the IsActive trigger and the active task would never look active.
+                -->
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="BorderBrush" Value="#E1E5EA" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <Setter Property="BorderBrush" Value="#4C8DFF" />
+                                <Setter Property="BorderThickness" Value="2" />
+                                <Setter Property="Background" Value="#F2F7FF" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
+                <Border.ContextMenu>
+                    <ContextMenu Opened="OnTaskMenuOpened">
+                        <MenuItem Header="_Switch to this task" Click="OnSwitchToTaskClick" />
+                        <Separator />
+                        <MenuItem Header="_Rename" Click="OnRenameTaskClick" />
+                        <MenuItem Header="_Delete" Click="OnDeleteTaskClick" />
+                    </ContextMenu>
+                </Border.ContextMenu>
+
+                <StackPanel>
+                    <Grid Margin="0,4,6,4" Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Rectangle Grid.Column="0" Width="4" Height="20" RadiusX="2" RadiusY="2"
+                                   Margin="4,0,8,0"
+                                   Fill="{Binding ColorHex, Converter={StaticResource HexToBrush}}" />
+
+                        <ToggleButton Grid.Column="1" IsChecked="{Binding IsExpanded}"
+                                      Width="16" Height="16" Margin="0,0,6,0" Padding="0"
+                                      BorderThickness="0" Background="Transparent"
+                                      Focusable="False" ToolTip="Show or hide this task's windows">
+                            <TextBlock FontSize="9" VerticalAlignment="Center"
+                                       HorizontalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="▶" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                <Setter Property="Text" Value="▼" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </ToggleButton>
+
+                        <TextBlock Grid.Column="2" Text="{Binding Name}" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Background="Transparent"
+                                   MouseLeftButtonDown="OnTaskNameClick"
+                                   ToolTip="Click to switch to this task; double-click to rename"
+                                   Visibility="{Binding IsRenaming,
+                                                        Converter={StaticResource InverseBoolToVisibility}}" />
+
+                        <TextBox Grid.Column="2"
+                                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                 VerticalAlignment="Center" Padding="2,0"
+                                 IsVisibleChanged="OnRenameBoxVisibleChanged"
+                                 KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
+                                 Visibility="{Binding IsRenaming,
+                                                      Converter={StaticResource BoolToVisibility}}" />
+
+                        <!-- In-progress rollup: visible even when the task is collapsed (§ F). -->
+                        <TextBlock Grid.Column="3" Text="{Binding ActivityGlyph}" FontSize="13"
+                                   Foreground="#4C8DFF" VerticalAlignment="Center" Margin="6,0"
+                                   ToolTip="A session in this task is working"
+                                   Visibility="{Binding ActivityGlyph,
+                                                        Converter={StaticResource StringToVisibility}}" />
+
+                        <!-- Reserved for task 09's notification badge. -->
+                        <Border Grid.Column="4" Background="#E5484D" CornerRadius="8" MinWidth="16"
+                                Height="16" Margin="0,0,6,0"
+                                Visibility="{Binding NotificationCount,
+                                                     Converter={StaticResource CountToVisibility}}">
+                            <TextBlock Text="{Binding NotificationCount}" Foreground="White"
+                                       FontSize="10" FontWeight="Bold" Margin="4,0"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+
+                        <TextBlock Grid.Column="5" VerticalAlignment="Center" Opacity="0.55"
+                                   FontSize="11"
+                                   Text="{Binding WindowCount, StringFormat={}{0} win}" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Windows}"
+                                  ItemTemplate="{StaticResource WindowRow}"
+                                  Margin="22,0,4,2"
+                                  Visibility="{Binding IsExpanded,
+                                                       Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Padding="8,6" Background="#F7F8FA"
+                BorderBrush="#E1E5EA" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="+ New task" Command="{Binding CreateTaskCommand}" Padding="10,3" />
+                <Button Content="Show all" Command="{Binding ShowAllCommand}" Padding="10,3"
+                        Margin="8,0,0,0"
+                        ToolTip="Bring every hidden window back and leave no task active" />
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Padding="8,5" Background="#F7F8FA"
+                BorderBrush="#E1E5EA" BorderThickness="0,1,0,0">
+            <TextBlock Text="{Binding Status}" Opacity="0.8" TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <Grid Margin="8">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" MinWidth="260" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="280" MinWidth="180" />
             </Grid.ColumnDefinitions>
 
             <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Text="Tracked" FontWeight="Bold"
-                           Margin="0,0,0,4" />
-                <!-- Virtualization off so the whole inventory is readable for verification. -->
-                <ListBox ItemsSource="{Binding Windows}"
-                         SelectedItem="{Binding SelectedWindow}"
-                         VirtualizingStackPanel.IsVirtualizing="False">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding ProcessFileName}" Opacity="0.6"
-                                           FontSize="11" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <TextBlock DockPanel.Dock="Top" Text="TASKS" FontSize="10" FontWeight="Bold"
+                           Opacity="0.5" Margin="2,0,0,6" />
+
+                <!-- The whole pane is the drop surface, so a task dragged past the last row still
+                     lands somewhere sensible. -->
+                <Border x:Name="TaskPane" Background="Transparent" AllowDrop="True"
+                        PreviewMouseLeftButtonDown="OnPaneMouseDown"
+                        PreviewMouseMove="OnPaneMouseMove"
+                        PreviewMouseLeftButtonUp="OnTaskPaneMouseUp"
+                        DragOver="OnTaskPaneDragOver" DragLeave="OnDragLeave"
+                        Drop="OnTaskPaneDrop">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <TextBlock Opacity="0.45" Margin="4,12" TextWrapping="Wrap"
+                                       Text="No tasks yet. Press “+ New task”, then drag windows in from the right.">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Tasks.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <ItemsControl x:Name="TaskList" ItemsSource="{Binding Tasks}"
+                                          ItemTemplate="{StaticResource TaskRow}" />
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
             </DockPanel>
 
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
+                          Background="Transparent" />
+
             <DockPanel Grid.Column="2">
-                <TextBlock DockPanel.Dock="Top" Text="Rejected (and why)" FontWeight="Bold"
-                           Margin="0,0,0,4" />
-                <ListBox ItemsSource="{Binding Rejected}"
-                         DisplayMemberPath="Display" />
+                <TextBlock DockPanel.Dock="Top" Text="UNASSIGNED WINDOWS" FontSize="10"
+                           FontWeight="Bold" Opacity="0.5" Margin="2,0,0,6" />
+                <TextBlock DockPanel.Dock="Bottom" Margin="2,6,0,0" FontSize="10" Opacity="0.45"
+                           TextWrapping="Wrap"
+                           Text="These stay visible in every task. Drag one onto a task row to assign it." />
+
+                <Border x:Name="UnassignedPane" Background="Transparent" AllowDrop="True"
+                        PreviewMouseLeftButtonDown="OnPaneMouseDown"
+                        PreviewMouseMove="OnPaneMouseMove"
+                        DragOver="OnUnassignedDragOver" DragLeave="OnDragLeave"
+                        Drop="OnUnassignedDrop">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Unassigned}"
+                                      ItemTemplate="{StaticResource WindowRow}" />
+                    </ScrollViewer>
+                </Border>
             </DockPanel>
         </Grid>
     </DockPanel>

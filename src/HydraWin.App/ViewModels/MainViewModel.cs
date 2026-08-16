@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using HydraWin.App.Services;
 using HydraWin.Core.Interop;
 using HydraWin.Core.Persistence;
 using HydraWin.Core.Recovery;
@@ -10,12 +11,21 @@ using HydraWin.Core.Workspaces;
 namespace HydraWin.App.ViewModels;
 
 /// <summary>
-/// Root view model for the main window.
+/// Root view model: owns the task rows and the unassigned pane, and turns Core's events into
+/// what the window shows.
 /// </summary>
 /// <remarks>
-/// Everything below the title is task 03's throwaway debug harness — a live view of the tracker
-/// plus the rejected windows and their reasons, which is what makes "these windows are absent"
-/// a verifiable claim. Task 07 replaces all of it with the real task table.
+/// <para>
+/// Structural changes — a task created, a window assigned, a switch completed — rebuild the task
+/// list, which is cheap because tasks and their windows are few. Title changes deliberately do
+/// <em>not</em>: task 01 measured about one per second per busy Claude Code terminal, so
+/// <see cref="OnWindowTitleChanged"/> touches one row through a handle-keyed index and nothing
+/// else (task 07 § F).
+/// </para>
+/// <para>
+/// No Win32 here or anywhere above Core; every window operation goes through
+/// <see cref="SwitchEngine"/> or <see cref="WorkspaceService"/>.
+/// </para>
 /// </remarks>
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
@@ -23,9 +33,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly HiddenWindowSet hiddenWindows;
     private readonly WorkspaceStore store;
     private readonly WorkspaceService workspaces;
-    private readonly RecoveryJournal journal;
     private readonly SwitchEngine switchEngine;
-    private readonly IWindowApi windowApi = Win32WindowApi.Instance;
+    private readonly WindowIconCache icons;
+    private readonly Dictionary<nint, WindowViewModel> windowsByHwnd = [];
     private bool disposed;
 
     public MainViewModel(RecoveryJournal journal, RestoreService restoreService)
@@ -48,212 +58,84 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         WorkspaceStore store,
         RecoveryJournal journal,
         RestoreService restoreService)
+        : this(
+            tracker,
+            hiddenWindows,
+            store,
+            journal,
+            restoreService,
+            new WindowIconCache(Win32IconSource.Instance))
+    {
+    }
+
+    public MainViewModel(
+        WindowTracker tracker,
+        HiddenWindowSet hiddenWindows,
+        WorkspaceStore store,
+        RecoveryJournal journal,
+        RestoreService restoreService,
+        WindowIconCache icons)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(hiddenWindows);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(journal);
         ArgumentNullException.ThrowIfNull(restoreService);
+        ArgumentNullException.ThrowIfNull(icons);
+
         this.tracker = tracker;
         this.hiddenWindows = hiddenWindows;
         this.store = store;
-        this.journal = journal;
+        this.icons = icons;
+
         workspaces = new WorkspaceService(store);
         switchEngine = new SwitchEngine(
-            workspaces, journal, restoreService, windowApi, hiddenWindows);
-        switchEngine.SwitchCompleted += (_, summary) =>
-        {
-            RefreshTasks();
-            UpdateStatus($"switch: {summary}");
-        };
+            workspaces, journal, restoreService, Win32WindowApi.Instance, hiddenWindows);
+
+        switchEngine.SwitchCompleted += OnSwitchCompleted;
 
         tracker.WindowAppeared += OnWindowAppeared;
         tracker.WindowDisappeared += OnWindowDisappeared;
         tracker.WindowTitleChanged += OnWindowTitleChanged;
         tracker.ForegroundChanged += OnForegroundChanged;
 
-        workspaces.TasksChanged += (_, _) => RefreshTasks();
-        workspaces.WindowAssigned += (_, e) => OnAssignmentChanged("assigned", e);
-        workspaces.WindowUnassigned += (_, e) => OnAssignmentChanged("unassigned", e);
-        workspaces.WindowReattached += (_, e) => OnAssignmentChanged("re-attached", e);
-        store.CorruptFileQuarantined += (_, path) =>
-            UpdateStatus($"state.json was corrupt — set aside as {System.IO.Path.GetFileName(path)}");
-        store.SaveFailed += (_, ex) => UpdateStatus($"save failed: {ex.Message}");
+        workspaces.TasksChanged += (_, _) => Rebuild();
+        workspaces.WindowAssigned += (_, _) => Rebuild();
+        workspaces.WindowUnassigned += (_, _) => Rebuild();
+        workspaces.WindowReattached += OnWindowReattached;
 
-        RefreshTasks();
+        store.CorruptFileQuarantined += (_, path) =>
+            Say($"state.json was corrupt — set aside as {System.IO.Path.GetFileName(path)}");
+        store.SaveFailed += (_, ex) => Say($"could not save: {ex.Message}");
+
+        Rebuild();
     }
 
-    /// <summary>Window title; task 07 makes it <c>HydraWin — &lt;active task&gt;</c>.</summary>
+    /// <summary>The window title: <c>HydraWin — &lt;active task&gt;</c>, or just the app name.</summary>
     [ObservableProperty]
     public partial string Title { get; set; } = "HydraWin";
 
-    /// <summary>Status line under the lists.</summary>
-    [ObservableProperty]
-    public partial string Status { get; set; } = "not started";
-
     /// <summary>
-    /// Count of rejections per clause. This is what makes "tool windows and UWP ghosts are
-    /// absent" checkable: every clause should be visibly firing, and HydraWin's own windows
-    /// should show up under <see cref="TrackableVerdict.OwnProcess"/>.
+    /// The one status line. Switch summaries, re-attach notices and recovery reports all land
+    /// here, because they are all answers to "what just happened to my windows".
     /// </summary>
     [ObservableProperty]
-    public partial string RejectionSummary { get; set; } = string.Empty;
+    public partial string Status { get; set; } = "Ready.";
 
-    /// <summary>Whether the ~2 s reconciliation sweep runs; off proves the hooks work alone.</summary>
-    [ObservableProperty]
-    public partial bool ReconciliationEnabled { get; set; } = true;
-
-    /// <summary>The live inventory, in the order the tracker reported it.</summary>
-    public ObservableCollection<TrackedWindow> Windows { get; } = [];
-
-    /// <summary>Windows that failed the filter, with the clause that rejected them.</summary>
-    public ObservableCollection<RejectedWindow> Rejected { get; } = [];
-
-    /// <summary>Task 04 harness: the persisted tasks and what is bound to them.</summary>
-    public ObservableCollection<string> TaskLines { get; } = [];
-
-    /// <summary>Where <c>state.json</c> lives, shown so the manual check knows where to look.</summary>
-    public string StatePath => store.Path;
-
-    /// <summary>The tracked window the drill commands act on.</summary>
-    [ObservableProperty]
-    public partial TrackedWindow? SelectedWindow { get; set; }
+    /// <summary>The tasks, in display order.</summary>
+    public ObservableCollection<TaskViewModel> Tasks { get; } = [];
 
     /// <summary>
-    /// What startup recovery put back, if anything. Kept apart from <see cref="Status"/> because
-    /// that line churns with every window event and would bury the notice within seconds.
+    /// Windows belonging to no task. These stay visible through every switch by design, which is
+    /// why the pane says so.
     /// </summary>
-    [ObservableProperty]
-    public partial string RecoveryNotice { get; set; } = string.Empty;
-
-    /// <summary>Reports what startup recovery put back.</summary>
-    public void ShowRecoveryNotice(RestoreSummary summary) =>
-        RecoveryNotice = $"Recovered {summary.Restored} window(s) from a previous session"
-            + (summary.Stale > 0 ? $", dropped {summary.Stale} stale entr(ies)" : string.Empty)
-            + $" — {DateTime.Now:HH:mm:ss}";
+    public ObservableCollection<WindowViewModel> Unassigned { get; } = [];
 
     /// <summary>
-    /// Task 05 drill: hides the selected window <em>through the journal</em>, so the crash drill
-    /// can be run before task 06's switch engine exists. Task 07 deletes this.
+    /// Asks the user to confirm deleting a task. Set by the view; the wording matters, so it lives
+    /// with the view rather than here.
     /// </summary>
-    /// <remarks>
-    /// The ordering below is the project's one invariant and is deliberately explicit: capture
-    /// the placement, write and flush the journal entry, and only then call
-    /// <see cref="IWindowApi.Hide"/>. If the entry cannot be written, nothing is hidden.
-    /// </remarks>
-    [RelayCommand]
-    public void HideSelected()
-    {
-        if (SelectedWindow is not TrackedWindow window)
-        {
-            UpdateStatus("select a window first");
-            return;
-        }
-
-        nint hwnd = window.Hwnd;
-        if (!windowApi.TryGetPlacement(hwnd, out WindowPlacement placement))
-        {
-            UpdateStatus($"could not read placement for 0x{hwnd:X}; not hiding it");
-            return;
-        }
-
-        journal.RecordBeforeHide([
-            new JournalEntry
-            {
-                Hwnd = hwnd,
-                Pid = window.Pid,
-                ProcessPath = window.ProcessPath,
-                TitleAtHide = window.Title,
-                Placement = WindowPlacementDto.FromPlacement(in placement),
-                HiddenAt = DateTimeOffset.UtcNow,
-            },
-        ]);
-
-        // Only now, with the entry on disk.
-        ShowWindowResult result = windowApi.Hide(hwnd);
-        if (result.Succeeded)
-        {
-            window.IsHydraWinHidden = true;
-            UpdateStatus($"hid 0x{hwnd:X} \"{window.Title}\" — journaled first");
-        }
-        else
-        {
-            // It refused, so it is not hidden and must not stay on the books.
-            journal.ConfirmShown(hwnd);
-            UpdateStatus($"0x{hwnd:X} refused to hide (win32={result.Win32Error}) — entry removed");
-        }
-    }
-
-    /// <summary>Task 06 harness: brings every hidden window back and clears the active task.</summary>
-    [RelayCommand]
-    public void RestoreAllWindows()
-    {
-        RestoreSummary summary = switchEngine.ShowAllTasks();
-        foreach (TrackedWindow window in Windows)
-        {
-            window.IsHydraWinHidden = false;
-        }
-
-        RefreshTasks();
-        UpdateStatus(summary.ToString());
-    }
-
-    /// <summary>
-    /// Task 06 harness: switches to the task at the given 1-based position, which is what the
-    /// number keys and the per-task buttons both call. Task 07 replaces this with the task table.
-    /// </summary>
-    [RelayCommand]
-    public void SwitchToOrder(int order)
-    {
-        HydraWinTask? task = workspaces.Tasks.FirstOrDefault(t => t.Order == order);
-        if (task is null)
-        {
-            UpdateStatus($"no task at position {order}");
-            return;
-        }
-
-        switchEngine.SwitchTo(task.Id);
-        SyncHiddenFlags();
-    }
-
-    /// <summary>Task 06 harness: deletes the active task, showing its windows first.</summary>
-    [RelayCommand]
-    public void DeleteActiveTask()
-    {
-        if (workspaces.State.ActiveTaskId is not Guid active)
-        {
-            UpdateStatus("no active task to delete");
-            return;
-        }
-
-        IReadOnlyList<WindowAssignment> orphaned = switchEngine.DeleteTask(active);
-        SyncHiddenFlags();
-        RefreshTasks();
-        UpdateStatus($"deleted the active task; {orphaned.Count} window(s) unassigned, none closed");
-    }
-
-    /// <summary>
-    /// When the crash hook is armed, the next switch kills the process between the journal flush
-    /// and the first hide — the worst interleaving the invariant has to survive.
-    /// </summary>
-    [ObservableProperty]
-    public partial bool CrashAfterJournalFlush { get; set; }
-
-    private void SyncHiddenFlags()
-    {
-        foreach (TrackedWindow window in Windows)
-        {
-            window.IsHydraWinHidden = hiddenWindows.Contains(window.Hwnd);
-        }
-    }
-
-    partial void OnCrashAfterJournalFlushChanged(bool value)
-    {
-        switchEngine.AfterJournalFlush = value
-            ? () => Environment.FailFast("HydraWin task 06 crash drill: dying between journal flush and hide.")
-            : null;
-        UpdateStatus(value ? "CRASH HOOK ARMED — the next switch will kill the process" : "crash hook off");
-    }
+    public Func<TaskViewModel, bool>? ConfirmDelete { get; set; }
 
     /// <summary>Starts tracking. Must be called on the dispatcher thread.</summary>
     public void Start()
@@ -261,111 +143,172 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         tracker.Start();
         foreach (TrackedWindow window in tracker.Windows)
         {
-            AddWindow(window);
+            Track(window);
         }
 
-        RefreshRejected();
-        UpdateStatus("started");
+        Rebuild();
+        Say($"{windowsByHwnd.Count} window(s) found. Drag one onto a task to begin.");
     }
 
-    /// <summary>Re-runs the explain pass that feeds the rejection pane.</summary>
+    /// <summary>Reports what startup recovery put back, if anything.</summary>
+    public void ShowRecoveryNotice(RestoreSummary summary) =>
+        Say($"Recovered {summary.Restored} window(s) from a previous session"
+            + (summary.Stale > 0 ? $", dropped {summary.Stale} stale entr(ies)" : string.Empty)
+            + ".");
+
+    /// <summary>Creates a task and opens it for naming straight away.</summary>
     [RelayCommand]
-    public void RefreshRejected()
+    public void CreateTask()
     {
-        Rejected.Clear();
+        HydraWinTask task = workspaces.CreateTask(NextTaskName());
+        Rebuild();
 
-        List<RejectedWindow> rejected =
-        [
-            .. tracker.Explain()
-                .Where(entry => entry.Verdict != TrackableVerdict.Trackable)
-                .Select(entry => new RejectedWindow(entry.Hwnd, entry.Title, entry.Verdict))
-                // Noisiest clauses last so the interesting ones are visible without scrolling.
-                .OrderBy(r => r.Verdict == TrackableVerdict.NoTitle ? 1 : 0)
-                .ThenBy(r => r.Verdict),
-        ];
-
-        foreach (RejectedWindow window in rejected)
+        TaskViewModel? row = Tasks.FirstOrDefault(t => t.Id == task.Id);
+        if (row is not null)
         {
-            Rejected.Add(window);
+            row.IsRenaming = true;
+        }
+    }
+
+    /// <summary>Commits an inline rename.</summary>
+    [RelayCommand]
+    public void RenameTask(TaskViewModel? task)
+    {
+        if (task is null)
+        {
+            return;
         }
 
-        RejectionSummary = string.Join(
-            "   ",
-            rejected.GroupBy(r => r.Verdict)
-                .OrderBy(group => group.Key)
-                .Select(group => $"{group.Key}={group.Count()}"));
+        task.IsRenaming = false;
+        string name = task.Name.Trim();
+        if (name.Length == 0)
+        {
+            // An empty name would leave an unclickable row; put the old one back.
+            Rebuild();
+            return;
+        }
 
-        UpdateStatus("rejections refreshed");
+        workspaces.RenameTask(task.Id, name);
+        UpdateTitle();
     }
 
     /// <summary>
-    /// Task 04 harness: creates two demo tasks and assigns the first tracked windows to them, so
-    /// the manual check has something to persist. Task 07 replaces this with real drag-and-drop.
+    /// Deletes a task after confirmation, un-hiding its windows first. Never closes a window.
     /// </summary>
     [RelayCommand]
-    public void SeedDemoTasks()
+    public void DeleteTask(TaskViewModel? task)
     {
-        HydraWinTask alpha = workspaces.CreateTask("Alpha");
-        HydraWinTask beta = workspaces.CreateTask("Beta");
-
-        List<TrackedWindow> windows = [.. Windows.Take(4)];
-        for (int i = 0; i < windows.Count; i++)
+        if (task is null || ConfirmDelete?.Invoke(task) == false)
         {
-            workspaces.AssignWindow(i % 2 == 0 ? alpha.Id : beta.Id, windows[i]);
+            return;
         }
 
-        RefreshTasks();
+        IReadOnlyList<WindowAssignment> orphaned = switchEngine.DeleteTask(task.Id);
+        SyncHiddenFlags();
+        Rebuild();
+        Say($"Deleted “{task.Name}”. {orphaned.Count} window(s) returned to Unassigned, "
+            + "none closed.");
     }
 
-    /// <summary>
-    /// Task 06 harness: builds three tasks from windows titled <c>HW-TASK1-…</c> and so on, so
-    /// the switch drill has a known layout. Task 07 replaces all of this with drag-and-drop.
-    /// </summary>
+    /// <summary>Switches to a task: hides every other task's windows and restores this one's.</summary>
     [RelayCommand]
-    public void SeedSwitchDrill()
+    public void SwitchTo(TaskViewModel? task)
     {
-        for (int n = 1; n <= 3; n++)
+        if (task is not null)
         {
-            string marker = $"HW-TASK{n}-";
-            List<TrackedWindow> members =
-                [.. Windows.Where(w => w.Title.Contains(marker, StringComparison.OrdinalIgnoreCase))];
+            switchEngine.SwitchTo(task.Id);
+        }
+    }
 
-            if (members.Count == 0)
-            {
-                continue;
-            }
+    /// <summary>Brings every hidden window back and leaves no task active.</summary>
+    [RelayCommand]
+    public void ShowAll()
+    {
+        RestoreSummary summary = switchEngine.ShowAllTasks();
+        SyncHiddenFlags();
+        Rebuild();
+        Say($"Showing all windows — {summary}.");
+    }
 
-            HydraWinTask task = workspaces.CreateTask($"Task {n}");
-            foreach (TrackedWindow window in members)
-            {
-                workspaces.AssignWindow(task.Id, window);
-            }
+    /// <summary>Switches to the window's task and focuses that window.</summary>
+    [RelayCommand]
+    public void FocusWindow(WindowViewModel? window)
+    {
+        if (window is not null)
+        {
+            switchEngine.SwitchToWindow(window.Hwnd);
+        }
+    }
+
+    /// <summary>Puts a window into a task, moving it out of wherever it was.</summary>
+    public void AssignWindow(WindowViewModel? window, TaskViewModel? task)
+    {
+        if (window is null || task is null)
+        {
+            return;
         }
 
-        workspaces.Flush();
-        RefreshTasks();
-        UpdateStatus($"seeded {workspaces.Tasks.Count} task(s) for the switch drill");
+        workspaces.AssignWindow(task.Id, window.Source);
+
+        // Assigning never hides: a window dropped onto a task that is not the active one stays
+        // where it is until the next switch, which is the predictable behaviour (§ D).
+        bool active = workspaces.State.ActiveTaskId == task.Id;
+        Say($"Added “{window.DisplayTitle}” to “{task.Name}”"
+            + (active ? "." : " — it stays visible until you switch tasks."));
     }
 
-    /// <summary>Task 04 harness: writes any pending state immediately.</summary>
+    /// <summary>Removes a window from its task; it stays visible in every task thereafter.</summary>
     [RelayCommand]
-    public void FlushState()
+    public void UnassignWindow(WindowViewModel? window)
     {
-        workspaces.Flush();
-        UpdateStatus($"flushed to {StatePath}");
-    }
-
-    /// <summary>Task 04 harness: deletes every task, returning their windows to unassigned.</summary>
-    [RelayCommand]
-    public void ClearTasks()
-    {
-        foreach (HydraWinTask task in workspaces.Tasks.ToList())
+        if (window is null)
         {
-            workspaces.DeleteTask(task.Id);
+            return;
         }
 
-        workspaces.Flush();
-        RefreshTasks();
+        // A window that is currently hidden must come back before it is let go of, or it would be
+        // stranded: unassigned windows are not in any switch plan, so nothing would ever show it.
+        if (hiddenWindows.Contains(window.Hwnd))
+        {
+            switchEngine.ShowAllTasks();
+            SyncHiddenFlags();
+        }
+
+        workspaces.UnassignWindow(window.Hwnd);
+        Say($"“{window.DisplayTitle}” is unassigned and stays visible in every task.");
+    }
+
+    /// <summary>Moves a task to a new position in the list.</summary>
+    public void ReorderTask(Guid taskId, int newIndex)
+    {
+        workspaces.ReorderTask(taskId, newIndex);
+        Say("Task order updated.");
+    }
+
+    /// <summary>The task a window row currently belongs to, or <see langword="null"/>.</summary>
+    public TaskViewModel? TaskOf(WindowViewModel window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return Tasks.FirstOrDefault(t => t.Windows.Contains(window));
+    }
+
+    /// <summary>The row for a window handle — how a drop turns its payload back into a window.</summary>
+    public WindowViewModel? FindWindow(nint hwnd) =>
+        windowsByHwnd.GetValueOrDefault(hwnd);
+
+    /// <summary>The row for a task id — how a drop turns its payload back into a task.</summary>
+    public TaskViewModel? FindTask(Guid id) => Tasks.FirstOrDefault(t => t.Id == id);
+
+    /// <summary>Abandons an inline rename, putting the stored name back.</summary>
+    public void CancelRename(TaskViewModel? task)
+    {
+        if (task is not null)
+        {
+            task.IsRenaming = false;
+
+            // Name was edited in place, so the model is the only copy of the old value.
+            Rebuild();
+        }
     }
 
     /// <inheritdoc />
@@ -380,6 +323,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         tracker.WindowDisappeared -= OnWindowDisappeared;
         tracker.WindowTitleChanged -= OnWindowTitleChanged;
         tracker.ForegroundChanged -= OnForegroundChanged;
+        switchEngine.SwitchCompleted -= OnSwitchCompleted;
         tracker.Dispose();
 
         // Shutdown must not lose the last edits.
@@ -388,105 +332,159 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         disposed = true;
     }
 
-    private void RefreshTasks()
+    /// <summary>Adds a window to the index, creating its row.</summary>
+    /// <returns>Whether it was new.</returns>
+    private bool Track(TrackedWindow window)
     {
-        TaskLines.Clear();
-        foreach (HydraWinTask task in workspaces.Tasks)
-        {
-            TaskLines.Add($"{task.Order}. {task.Name}  [{task.ColorHex}]  "
-                + $"{task.Assignments.Count} assignment(s)");
-
-            foreach (WindowAssignment assignment in task.Assignments)
-            {
-                string bound = assignment.BoundHwnd is nint hwnd
-                    ? $"0x{hwnd:X}"
-                    : "unbound";
-                TaskLines.Add($"      {assignment.Rule.ProcessFileName} "
-                    + $"\"{assignment.Rule.TitlePattern}\" — {bound}");
-            }
-        }
-    }
-
-    private void OnAssignmentChanged(string what, AssignmentChangedEventArgs e)
-    {
-        RefreshTasks();
-        string window = e.Window?.Title ?? e.Assignment.Rule.TitlePattern;
-        UpdateStatus($"{what}: {window} ↔ {e.Task.Name}");
-    }
-
-    partial void OnReconciliationEnabledChanged(bool value)
-    {
-        tracker.ReconciliationEnabled = value;
-        UpdateStatus(value ? "sweep on" : "sweep OFF (hooks only)");
-    }
-
-    private void OnWindowAppeared(object? sender, TrackedWindow window)
-    {
-        if (!AddWindow(window))
-        {
-            return;
-        }
-
-        // Offer it to the re-attach rules: a reopened window rejoins its task without the user
-        // touching anything. Raises WindowReattached when a rule claims it.
-        workspaces.OnWindowAppeared(window);
-        UpdateStatus($"+ {window.ProcessFileName}");
-    }
-
-    /// <summary>
-    /// Adds a window unless its handle is already listed, and reports whether it was new.
-    /// </summary>
-    /// <remarks>
-    /// Keyed on the handle rather than the instance: <see cref="Start"/> copies the tracker's
-    /// initial sweep while the same sweep is also delivering <c>WindowAppeared</c> events, and a
-    /// window that flickers away and back — packaged Notepad does exactly this — can arrive as a
-    /// second instance for the same handle. Listing it twice would then be permanent.
-    /// </remarks>
-    private bool AddWindow(TrackedWindow window)
-    {
-        if (Windows.Any(w => w.Hwnd == window.Hwnd))
+        if (windowsByHwnd.ContainsKey(window.Hwnd))
         {
             return false;
         }
 
-        Windows.Add(window);
+        windowsByHwnd[window.Hwnd] = new WindowViewModel(window, icons.GetIcon(window.ProcessPath))
+        {
+            IsHydraWinHidden = hiddenWindows.Contains(window.Hwnd),
+        };
+
         return true;
+    }
+
+    /// <summary>
+    /// Rebuilds the task rows and the unassigned pane from the model. Structural changes only —
+    /// never on a title event.
+    /// </summary>
+    private void Rebuild()
+    {
+        // Transient row state has to survive the rebuild. Creating a task raises TasksChanged
+        // through the synchronization context, so the rebuild it triggers lands *after* the
+        // command has already put the new row into rename mode — without this, the rename box
+        // appeared and vanished in the same instant.
+        Dictionary<Guid, (bool Expanded, bool Renaming)> rowState =
+            Tasks.ToDictionary(t => t.Id, t => (t.IsExpanded, t.IsRenaming));
+        Guid? active = workspaces.State.ActiveTaskId;
+
+        foreach (TaskViewModel row in Tasks)
+        {
+            row.Clear();
+        }
+
+        Tasks.Clear();
+
+        foreach (HydraWinTask task in workspaces.Tasks)
+        {
+            bool known = rowState.TryGetValue(task.Id, out (bool Expanded, bool Renaming) previous);
+            var row = new TaskViewModel(task.Id, task.Name, task.ColorHex)
+            {
+                IsActive = task.Id == active,
+                IsExpanded = !known || previous.Expanded,
+                IsRenaming = known && previous.Renaming,
+            };
+
+            foreach (WindowAssignment assignment in task.Assignments)
+            {
+                if (assignment.BoundHwnd is nint hwnd
+                    && windowsByHwnd.TryGetValue(hwnd, out WindowViewModel? window))
+                {
+                    window.IsUnmanageable = assignment.Unmanageable;
+                    row.Add(window);
+                }
+            }
+
+            Tasks.Add(row);
+        }
+
+        Unassigned.Clear();
+        foreach (WindowViewModel window in windowsByHwnd.Values
+            .Where(w => !workspaces.IsBound(w.Hwnd))
+            .OrderBy(w => w.ProcessName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(w => w.DisplayTitle, StringComparer.CurrentCultureIgnoreCase))
+        {
+            Unassigned.Add(window);
+        }
+
+        UpdateTitle();
+    }
+
+    private void UpdateTitle()
+    {
+        TaskViewModel? active = Tasks.FirstOrDefault(t => t.IsActive);
+        Title = active is null ? "HydraWin" : $"HydraWin — {active.Name}";
+    }
+
+    private void SyncHiddenFlags()
+    {
+        foreach (WindowViewModel window in windowsByHwnd.Values)
+        {
+            window.IsHydraWinHidden = hiddenWindows.Contains(window.Hwnd);
+        }
+    }
+
+    private string NextTaskName()
+    {
+        int n = Tasks.Count + 1;
+        while (Tasks.Any(t => string.Equals(t.Name, $"Task {n}", StringComparison.OrdinalIgnoreCase)))
+        {
+            n++;
+        }
+
+        return $"Task {n}";
+    }
+
+    private void OnSwitchCompleted(object? sender, SwitchSummary summary)
+    {
+        SyncHiddenFlags();
+        Rebuild();
+
+        TaskViewModel? active = Tasks.FirstOrDefault(t => t.IsActive);
+        Say(active is null
+            ? $"Switched — {summary}."
+            : $"Switched to “{active.Name}” — {summary}.");
+    }
+
+    private void OnWindowAppeared(object? sender, TrackedWindow window)
+    {
+        if (!Track(window))
+        {
+            return;
+        }
+
+        // Offer it to the re-attach rules: a reopened window rejoins its task on its own. Raises
+        // WindowReattached when a rule claims it, which rebuilds.
+        workspaces.OnWindowAppeared(window);
+        Rebuild();
     }
 
     private void OnWindowDisappeared(object? sender, TrackedWindow window)
     {
-        Windows.Remove(window);
+        windowsByHwnd.Remove(window.Hwnd);
 
         // Drops the binding but keeps the rule, so the window re-attaches when it comes back...
         workspaces.OnWindowDisappeared(window.Hwnd);
 
-        // ...and forgets it in the journal, so a window that died while hidden does not leave a
-        // dead handle behind in journal.json and the hidden set.
+        // ...and forgets it in the journal, so a window that died while hidden leaves no dead
+        // handle behind in journal.json or the hidden set.
         switchEngine.OnWindowDisappeared(window.Hwnd);
-        UpdateStatus($"- {window.ProcessFileName}");
+        Rebuild();
     }
 
-    private void OnWindowTitleChanged(object? sender, WindowTitleChangedEventArgs e) =>
-        UpdateStatus($"~ {e.Window.ProcessFileName}: {e.NewTitle}");
-
-    private void OnForegroundChanged(object? sender, nint hwnd)
+    private void OnWindowTitleChanged(object? sender, WindowTitleChangedEventArgs e)
     {
-        // Remembered per task so switching back restores focus where the user left it.
-        switchEngine.OnForegroundChanged(hwnd);
-        UpdateStatus($"foreground 0x{hwnd:X}");
+        // The hot path. One dictionary lookup and one property set; no list is touched.
+        if (windowsByHwnd.TryGetValue(e.Window.Hwnd, out WindowViewModel? window))
+        {
+            window.Title = e.NewTitle;
+        }
     }
 
-    private void UpdateStatus(string detail) =>
-        Status = $"{Windows.Count} tracked, {Rejected.Count} rejected — {detail} "
-            + $"({DateTime.Now:HH:mm:ss})";
-}
+    private void OnForegroundChanged(object? sender, nint hwnd) =>
+        switchEngine.OnForegroundChanged(hwnd);
 
-/// <summary>A window the filter excluded, and why.</summary>
-/// <param name="Hwnd">The window handle.</param>
-/// <param name="Title">Its title, which may be empty.</param>
-/// <param name="Verdict">The clause that rejected it.</param>
-public sealed record RejectedWindow(nint Hwnd, string Title, TrackableVerdict Verdict)
-{
-    /// <summary>Display form for the harness list.</summary>
-    public string Display => $"[{Verdict}] 0x{Hwnd:X} {Title}";
+    private void OnWindowReattached(object? sender, AssignmentChangedEventArgs e)
+    {
+        Rebuild();
+        string window = e.Window?.Title ?? e.Assignment.Rule.TitlePattern;
+        Say($"Re-attached “{window}” to “{e.Task.Name}”.");
+    }
+
+    private void Say(string message) => Status = $"{message}  ({DateTime.Now:HH:mm:ss})";
 }

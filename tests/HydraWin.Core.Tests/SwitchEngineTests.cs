@@ -273,6 +273,51 @@ public sealed class SwitchEngineTests : IDisposable
     }
 
     [Fact]
+    public void FocusingAWindowSwitchesToItsTaskFirst()
+    {
+        // The Focus command on a window of a non-active task: it is hidden right up until the
+        // switch, so focusing without switching would land on nothing.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        HydraWinTask beta = TaskWith("Beta", 0x20, 0x21);
+        engine.SwitchTo(alpha.Id);
+
+        engine.SwitchToWindow(0x21);
+
+        Assert.Equal(beta.Id, workspaces.State.ActiveTaskId);
+        Assert.True(api.Get(0x21)!.Visible);
+        Assert.Equal(0x21, api.FocusedWindow);
+    }
+
+    [Fact]
+    public void FocusingAWindowBeatsTheTasksLastActiveWindow()
+    {
+        // The user named this window, so it wins over wherever they happened to be last.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        TaskWith("Beta", 0x20, 0x21);
+        engine.OnForegroundChanged(0x20);
+        engine.SwitchTo(alpha.Id);
+
+        engine.SwitchToWindow(0x21);
+
+        Assert.Equal(0x21, api.FocusedWindow);
+    }
+
+    [Fact]
+    public void FocusingAnUnassignedWindowFocusesItWithoutSwitching()
+    {
+        // Unassigned windows are visible in every task, so there is no task to switch to.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        engine.SwitchTo(alpha.Id);
+        api.Add(0x99, pid: 99, path: AppPath, visible: true);
+
+        SwitchSummary summary = engine.SwitchToWindow(0x99);
+
+        Assert.Equal(default, summary);
+        Assert.Equal(alpha.Id, workspaces.State.ActiveTaskId);
+        Assert.Equal(0x99, api.FocusedWindow);
+    }
+
+    [Fact]
     public void ShowAllBringsEverythingBackAndClearsTheActiveTask()
     {
         HydraWinTask alpha = TaskWith("Alpha", 0x10);
