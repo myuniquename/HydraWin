@@ -10,8 +10,8 @@ namespace HydraWin.Core.Notifications;
 /// The <em>secondary</em> channel, and none of these fire by default. Badges normally come from
 /// <see cref="NotificationKind.Attention"/> — the shell flash — which works for any application
 /// without a rule, a regex or a process name. Rules exist for programs that announce something in
-/// their title and never flash; task 10 adds an editor for them, and until then they are edited by
-/// hand in <c>state.json</c>.
+/// their title and never flash; task 10 added the editor on the settings dialog's
+/// <i>Notifications</i> tab, and <c>state.json</c> stays hand-editable alongside it.
 /// </para>
 /// <para>
 /// Two facts task 01 measured, both of which cost time to establish and neither of which should be
@@ -96,7 +96,24 @@ public sealed class NotificationRule
             return false;
         }
 
-        if (!MatchesProcess(processFileName))
+        // Edge-triggered: the transition is the event, not the state.
+        return MatchesTitle(processFileName, newTitle)
+            && !MatchesTitle(processFileName, oldTitle);
+    }
+
+    /// <summary>
+    /// Whether the process and pattern match a title as it stands — no edge, and
+    /// <see cref="Enabled"/> ignored.
+    /// </summary>
+    /// <remarks>
+    /// This is what the rule editor's live preview asks, and it is also the half
+    /// <see cref="Matches"/> applies twice. Sharing it is the point: a preview computed by a
+    /// second implementation could tell the user their rule matches something the tracker would
+    /// never fire on.
+    /// </remarks>
+    public bool MatchesTitle(string processFileName, string title)
+    {
+        if (string.IsNullOrEmpty(TitleRegex) || !MatchesProcess(processFileName))
         {
             return false;
         }
@@ -109,9 +126,7 @@ public sealed class NotificationRule
 
         try
         {
-            // Edge-triggered: the transition is the event, not the state.
-            return regex.IsMatch(newTitle ?? string.Empty)
-                && !regex.IsMatch(oldTitle ?? string.Empty);
+            return regex.IsMatch(title ?? string.Empty);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -138,8 +153,8 @@ public sealed class NotificationRule
         }
         catch (ArgumentException)
         {
-            // A pattern the user hand-edited into state.json. Task 10's editor will validate up
-            // front; here it simply never matches.
+            // A pattern hand-edited into state.json. The editor validates up front and saves a
+            // broken rule disabled; here it simply never matches.
             compiled = null;
         }
 

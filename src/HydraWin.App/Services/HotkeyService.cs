@@ -151,14 +151,6 @@ internal sealed class HotkeyService : IDisposable
         return failures;
     }
 
-    private static string Describe(HotkeyBinding binding)
-    {
-        string keys = string.IsNullOrEmpty(binding.Modifiers)
-            ? binding.Key
-            : $"{binding.Modifiers}+{binding.Key}";
-
-        return binding.Action == HotkeyAction.SwitchToTask
-            ? $"{keys} (switch to task {binding.TaskOrder})"
-            : $"{keys} ({binding.Action})";
-    }
+    private static string Describe(HotkeyBinding binding) =>
+        $"{binding.ToDisplayString()} ({binding.DescribeAction()})";
 }

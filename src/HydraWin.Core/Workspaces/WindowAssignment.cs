@@ -7,9 +7,11 @@ namespace HydraWin.Core.Workspaces;
 /// handle it is currently bound to.
 /// </summary>
 /// <remarks>
-/// Later tasks add to this type: task 06 marks an assignment unmanageable when a window refuses
-/// <c>SW_HIDE</c> (elevated windows, per task 01's measurement), and task 10 adds the
-/// global/pinned flag for windows that stay visible in every task.
+/// The same type serves both a task's windows and the always-visible pins in
+/// <see cref="WorkspaceState.GlobalWindows"/> — a pin is an assignment that lives outside every
+/// task, which is what keeps it out of <see cref="SwitchPlan"/>. There is deliberately no
+/// <c>IsGlobal</c> flag: which list it is in <em>is</em> the answer, and a flag could disagree
+/// with that.
 /// </remarks>
 public sealed class WindowAssignment
 {
@@ -31,9 +33,10 @@ public sealed class WindowAssignment
     public bool IsBound => BoundHwnd is not null;
 
     /// <summary>
-    /// Set when the window refused to be hidden — in practice an elevated window, which UIPI
-    /// stops a non-elevated HydraWin from touching (task 01 measured the signature). The window
-    /// stays visible through every switch and task 10 annotates it in the UI.
+    /// Set when the window refused to be hidden. Since task 07 elevated windows never reach the
+    /// inventory at all, so this is the residue: a window that looked ordinary and refused anyway
+    /// — a protected process, or one that became elevated after HydraWin first saw it. It stays
+    /// visible through every switch, and the UI marks its row.
     /// </summary>
     /// <remarks>
     /// Runtime-only on purpose: the verdict comes from actually trying, and persisting it would

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using HydraWin.App.Services;
+using HydraWin.Core.Diagnostics;
 using HydraWin.Core.Interop;
 using HydraWin.Core.Notifications;
 using HydraWin.Core.Persistence;
@@ -37,6 +38,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly SwitchEngine switchEngine;
     private readonly NotificationHub notifications;
     private readonly WindowIconCache icons;
+    private readonly AppLog log = AppLog.Default;
     private readonly Dictionary<nint, WindowViewModel> windowsByHwnd = [];
     private Guid? pendingRenameTaskId;
     private bool rebuildDeferred;
@@ -113,6 +115,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         workspaces.WindowAssigned += (_, _) => Rebuild();
         workspaces.WindowUnassigned += (_, _) => Rebuild();
         workspaces.WindowReattached += OnWindowReattached;
+        workspaces.GlobalsChanged += OnGlobalsChanged;
 
         store.CorruptFileQuarantined += (_, path) =>
             Say($"state.json was corrupt — set aside as {System.IO.Path.GetFileName(path)}");
@@ -133,6 +136,112 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Whether a new notification also raises a tray balloon. Default off.</summary>
     public bool NotificationToasts => workspaces.State.Settings.NotificationToasts;
+
+    /// <summary>The title-watching notification rules, for the settings dialog to edit.</summary>
+    public IReadOnlyList<NotificationRule> NotificationRules =>
+        workspaces.State.Settings.NotificationRules;
+
+    /// <summary>
+    /// Every window currently in the inventory, for the rule editors to preview against.
+    /// </summary>
+    public IReadOnlyList<TrackedWindow> Inventory =>
+        [.. windowsByHwnd.Values.Select(w => w.Source)];
+
+    /// <summary>
+    /// Raised when the hotkey list has been replaced, so the App can re-register them. The
+    /// bindings live on the Win32 thread that claimed them, so nothing here can rebind in place.
+    /// </summary>
+    public event EventHandler? HotkeysChanged;
+
+    /// <summary>
+    /// Writes the settings dialog's result through in one go, and reports what needs re-doing
+    /// because of it.
+    /// </summary>
+    /// <remarks>
+    /// One call rather than a property per setting: the dialog is modal and its OK is a single
+    /// decision, so persisting once keeps <c>state.json</c> from being rewritten five times and
+    /// keeps the hotkey re-registration to one pass.
+    /// </remarks>
+    public void ApplySettings(
+        bool restoreOnExit,
+        bool closeToTray,
+        bool alwaysOnTop,
+        bool notificationToasts,
+        IReadOnlyList<HotkeyBinding> hotkeys,
+        IReadOnlyList<NotificationRule> notificationRules)
+    {
+        ArgumentNullException.ThrowIfNull(hotkeys);
+        ArgumentNullException.ThrowIfNull(notificationRules);
+
+        bool hotkeysDiffer = !Hotkeys
+            .Select(b => (b.Action, b.TaskOrder, b.Modifiers, b.Key))
+            .SequenceEqual(hotkeys.Select(b => (b.Action, b.TaskOrder, b.Modifiers, b.Key)));
+
+        workspaces.UpdateSettings(settings =>
+        {
+            settings.RestoreOnExit = restoreOnExit;
+            settings.CloseToTray = closeToTray;
+            settings.AlwaysOnTop = alwaysOnTop;
+            settings.NotificationToasts = notificationToasts;
+            settings.Hotkeys = [.. hotkeys];
+            settings.NotificationRules = [.. notificationRules];
+        });
+
+        // Goes through the observable property so the toolbar checkbox and the window's Topmost
+        // binding follow, rather than only the file.
+        AlwaysOnTop = alwaysOnTop;
+
+        OnPropertyChanged(nameof(RestoreOnExit));
+        OnPropertyChanged(nameof(CloseToTray));
+        OnPropertyChanged(nameof(NotificationToasts));
+
+        Say("Settings saved.");
+
+        if (hotkeysDiffer)
+        {
+            HotkeysChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        // A changed rule can make a pending badge wrong, and the cheapest honest answer is to let
+        // the next event decide rather than leave a stale one showing.
+        RefreshBadges();
+    }
+
+    /// <summary>
+    /// Rewrites the re-attach rule of the assignment a window is bound to.
+    /// </summary>
+    /// <returns>Whether the window still had an assignment to edit.</returns>
+    public bool UpdateReattachRule(
+        WindowViewModel window,
+        string processFileName,
+        string titlePattern,
+        bool titleIsRegex)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+
+        if (workspaces.FindAssignmentOf(window.Hwnd) is not WindowAssignment assignment)
+        {
+            Say($"“{window.DisplayTitle}” no longer belongs to a task, so it has no rule.");
+            return false;
+        }
+
+        workspaces.UpdateRule(assignment.Id, rule =>
+        {
+            rule.ProcessFileName = processFileName;
+            rule.TitlePattern = titlePattern;
+            rule.TitleIsRegex = titleIsRegex;
+        });
+
+        Say($"Re-attach rule updated for “{window.DisplayTitle}”.");
+        return true;
+    }
+
+    /// <summary>The assignment a window is bound to, for the rule editor to read.</summary>
+    public WindowAssignment? AssignmentOf(WindowViewModel window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return workspaces.FindAssignmentOf(window.Hwnd);
+    }
 
     /// <summary>Whether closing the manager window hides it to the tray instead of exiting.</summary>
     public bool CloseToTray
@@ -219,6 +328,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// why the pane says so.
     /// </summary>
     public ObservableCollection<WindowViewModel> Unassigned { get; } = [];
+
+    /// <summary>
+    /// Windows the user pinned to stay on screen in every task — a player, a clock, a chat window.
+    /// </summary>
+    /// <remarks>
+    /// Unassigned windows are also never hidden, so on the surface these look the same. The
+    /// difference is intent, and it survives a restart: a pin carries a re-attach rule, so the
+    /// window is claimed again when it reopens instead of drifting back into the unassigned list
+    /// where some task's rule might take it.
+    /// </remarks>
+    public ObservableCollection<WindowViewModel> Globals { get; } = [];
 
     /// <summary>
     /// Asks the user to confirm deleting a task. Set by the view; the wording matters, so it lives
@@ -458,7 +578,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _ => $"Could not add “{window}” — that task no longer exists.",
     };
 
-    /// <summary>Removes a window from its task; it stays visible in every task thereafter.</summary>
+    /// <summary>Removes a window from its task or its pin; it stays visible in every task after.</summary>
     [RelayCommand]
     public void UnassignWindow(WindowViewModel? window)
     {
@@ -467,16 +587,61 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // A window that is currently hidden must come back before it is let go of, or it would be
-        // stranded: unassigned windows are not in any switch plan, so nothing would ever show it.
-        if (hiddenWindows.Contains(window.Hwnd))
+        bool wasPinned = workspaces.IsGlobal(window.Hwnd);
+        Unhide(window);
+        workspaces.UnassignWindow(window.Hwnd);
+
+        Say(wasPinned
+            ? $"“{window.DisplayTitle}” is no longer pinned."
+            : $"“{window.DisplayTitle}” is unassigned and stays visible in every task.");
+    }
+
+    /// <summary>
+    /// Pins a window to stay visible in every task, taking it out of whatever task held it.
+    /// </summary>
+    [RelayCommand]
+    public void PinGlobal(WindowViewModel? window)
+    {
+        if (window is null || workspaces.IsGlobal(window.Hwnd))
         {
-            switchEngine.ShowAllTasks();
-            SyncHiddenFlags();
+            return;
         }
 
-        workspaces.UnassignWindow(window.Hwnd);
-        Say($"“{window.DisplayTitle}” is unassigned and stays visible in every task.");
+        Unhide(window);
+        workspaces.PinGlobal(window.Source);
+        Say($"“{window.DisplayTitle}” is pinned and stays visible in every task.");
+    }
+
+    /// <summary>Whether a window is pinned always-visible.</summary>
+    public bool IsPinned(WindowViewModel window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return workspaces.IsGlobal(window.Hwnd);
+    }
+
+    /// <summary>Whether a window belongs to a task or a pin, rather than being loose.</summary>
+    public bool IsAssigned(WindowViewModel window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return workspaces.IsBound(window.Hwnd);
+    }
+
+    /// <summary>
+    /// Brings a window back on screen before it leaves the switch machinery's care.
+    /// </summary>
+    /// <remarks>
+    /// Both unassigning and pinning move a window somewhere no switch plan reaches. Doing that to
+    /// a window that is currently hidden would strand it: nothing left would ever show it again.
+    /// </remarks>
+    private void Unhide(WindowViewModel window)
+    {
+        if (!hiddenWindows.Contains(window.Hwnd))
+        {
+            return;
+        }
+
+        switchEngine.ShowAllTasks();
+        SyncHiddenFlags();
     }
 
     /// <summary>Moves a task to a new position in the list.</summary>
@@ -634,6 +799,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Tasks.Add(row);
         }
 
+        Globals.Clear();
+        foreach (WindowAssignment pin in workspaces.GlobalWindows)
+        {
+            if (pin.BoundHwnd is nint hwnd
+                && windowsByHwnd.TryGetValue(hwnd, out WindowViewModel? pinned))
+            {
+                pinned.IsUnmanageable = pin.Unmanageable;
+                Globals.Add(pinned);
+            }
+        }
+
         Unassigned.Clear();
         foreach (WindowViewModel window in windowsByHwnd.Values
             .Where(w => !workspaces.IsBound(w.Hwnd))
@@ -683,6 +859,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Say(active is null
             ? $"Switched — {summary}."
             : $"Switched to “{active.Name}” — {summary}.");
+
+        if (summary.Unmanageable > 0)
+        {
+            // The count alone leaves the user hunting for which window stayed put. Since task 07
+            // keeps elevated windows out of the inventory entirely, anything landing here is a
+            // surprise worth naming.
+            Say("Still on screen because it refused to hide: " + NameUnmanageable() + ".");
+        }
+    }
+
+    /// <summary>The windows currently marked unmanageable, for the status line.</summary>
+    private string NameUnmanageable()
+    {
+        IEnumerable<string> names = Tasks
+            .SelectMany(t => t.Windows)
+            .Where(w => w.IsUnmanageable)
+            .Select(w => $"“{w.DisplayTitle}”");
+
+        string joined = string.Join(", ", names);
+        return joined.Length == 0 ? "a window that has since closed" : joined;
     }
 
     private void OnWindowAppeared(object? sender, TrackedWindow window)
@@ -823,5 +1019,27 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Say($"Re-attached “{window}” to “{e.Task.Name}”.");
     }
 
-    private void Say(string message) => Status = $"{message}  ({DateTime.Now:HH:mm:ss})";
+    /// <summary>
+    /// The always-visible list changed. Only a rule re-claiming a reopened window is worth saying
+    /// out loud; pinning and unpinning already say so from the command that did it.
+    /// </summary>
+    private void OnGlobalsChanged(object? sender, GlobalChangedEventArgs e)
+    {
+        Rebuild();
+
+        if (e.Window is not null)
+        {
+            Say($"“{e.Window.Title}” is pinned — it stays visible in every task.");
+        }
+    }
+
+    /// <summary>
+    /// Puts a line in the status bar and in the log. One funnel, so anything worth telling the
+    /// user is also worth having in the file when they come to ask what happened yesterday.
+    /// </summary>
+    private void Say(string message)
+    {
+        Status = $"{message}  ({DateTime.Now:HH:mm:ss})";
+        log.Write(message);
+    }
 }

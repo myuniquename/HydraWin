@@ -51,8 +51,9 @@ its window (named pipe or `EVENT` + `WM_COPYDATA` — pick one, note it), then e
 instance still holds it (task 05 built it standalone; keep it that way).
 
 ### D. Startup
-Optional launch-at-login via `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value
-(setting, default off; written/removed when toggled — the only registry touch in the project).
+~~Optional launch-at-login via `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.~~
+**Dropped from the project** (user's instruction, 2026-08-16) — first deferred to task 10, then cut
+outright rather than built there. HydraWin touches no registry at all.
 
 ## Verification
 
@@ -84,8 +85,8 @@ Optional launch-at-login via `HKCU\Software\Microsoft\Windows\CurrentVersion\Run
   `WM_HOTKEY` goes to the *calling thread's* queue rather than to a window. That removed the window
   class, the `WndProc` and the delegate-lifetime hazard that comes with them; the thread is a
   `GetMessage` loop and nothing else.
-- **Part D (launch at login) is deferred to task 10**, on the user's instruction. The project still
-  touches no registry.
+- **Part D (launch at login) was deferred to task 10 and then dropped entirely**, both on the
+  user's instruction (the second on 2026-08-16). The project touches no registry.
 - **Key names are resolved in Core, not by WPF's `KeyInterop`.** `HydraWin.Core` has no WPF
   reference, and a small table there keeps the parsing unit-testable while letting `state.json` say
   `"1"` and `"R"` instead of WPF's `"D1"` — which matters because § B requires hand-editing to work.

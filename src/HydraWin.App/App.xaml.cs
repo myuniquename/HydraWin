@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Threading;
 using HydraWin.App.Services;
+using HydraWin.Core.Diagnostics;
 using HydraWin.Core.Interop;
 using HydraWin.Core.Recovery;
 using HydraWin.Core.Workspaces;
@@ -32,6 +34,8 @@ public partial class App : Application
         }
 
         base.OnStartup(e);
+
+        InstallCrashHandlers();
 
         singleInstance = new SingleInstance();
         if (!singleInstance.IsFirstInstance)
@@ -67,9 +71,89 @@ public partial class App : Application
         singleInstance.ListenForShowRequests(
             () => Dispatcher.BeginInvoke(() => window?.ShowFromTray()));
 
-        tray = new TrayIcon(window.ViewModel, ShowWindow, ExitApplication);
+        tray = new TrayIcon(window.ViewModel, ShowWindow, ExitApplication, ShowSettings);
         StartHotkeys();
         StartShellHook();
+
+        window.ViewModel.HotkeysChanged += (_, _) => RestartHotkeys();
+
+        AppLog.Default.Write($"HydraWin started (recovered {recovered.Restored} window(s)).");
+    }
+
+    /// <summary>
+    /// Logs an unhandled exception, brings every hidden window back, and then lets the process
+    /// die.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately not a "keep running" handler. An app in an unknown state is exactly what the
+    /// crash-recovery journal exists for, and pretending otherwise risks a second, worse failure
+    /// with the user's windows still hidden. What this buys is the two things a bare crash would
+    /// not do: a line in the log saying what happened, and the windows back on screen before the
+    /// process goes.
+    /// </para>
+    /// <para>
+    /// The restore is safe from either thread — it is pure Win32 over a mutex-guarded file — which
+    /// matters because <c>AppDomain.UnhandledException</c> can arrive on any of them.
+    /// </para>
+    /// </remarks>
+    private void InstallCrashHandlers()
+    {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            RecordCrash("unhandled exception on the dispatcher", args.Exception);
+
+            // args.Handled stays false on purpose: let it crash.
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            RecordCrash(
+                "unhandled exception on a background thread",
+                args.ExceptionObject as Exception);
+    }
+
+    private void RecordCrash(string context, Exception? exception)
+    {
+        if (exception is null)
+        {
+            AppLog.Default.Write($"CRASH: {context} (no exception object).");
+        }
+        else
+        {
+            AppLog.Default.WriteException($"CRASH: {context}", exception);
+        }
+
+        try
+        {
+            if (journal is not null && restoreService is not null)
+            {
+                RestoreSummary summary = restoreService.RestoreAll(journal);
+                AppLog.Default.Write($"CRASH: restore attempted — {summary}.");
+            }
+        }
+        catch (Exception restoreFailure)
+        {
+            // Nothing left to do but say so. Swallowing here does not hide the original crash:
+            // the process is still going down, and --restore-all remains the way back.
+            AppLog.Default.WriteException("CRASH: the restore itself failed", restoreFailure);
+        }
+    }
+
+    private void ShowSettings() => window?.ShowSettings();
+
+    /// <summary>
+    /// Re-registers the hotkeys after the settings dialog changed them.
+    /// </summary>
+    /// <remarks>
+    /// A hotkey belongs to the thread that claimed it, and <see cref="HotkeyService"/> owns that
+    /// thread, so rebinding means stopping the service and starting a new one. Its loop exits
+    /// cleanly on <c>StopLoop</c> and releases what it registered on the way out.
+    /// </remarks>
+    private void RestartHotkeys()
+    {
+        hotkeys?.Dispose();
+        hotkeys = null;
+        StartHotkeys();
     }
 
     /// <summary>

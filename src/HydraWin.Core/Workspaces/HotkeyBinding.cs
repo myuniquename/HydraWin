@@ -112,6 +112,41 @@ public sealed class HotkeyBinding
     }
 
     /// <summary>
+    /// The combination as the user reads and types it — <c>Control+Alt+1</c>, or just the key when
+    /// there are no modifiers. Round-trips: what this prints is what the editor stores back.
+    /// </summary>
+    public string ToDisplayString() =>
+        string.IsNullOrEmpty(Modifiers) ? Key : $"{Modifiers}+{Key}";
+
+    /// <summary>What the binding does, spelled out for the settings list and error messages.</summary>
+    public string DescribeAction() => Action switch
+    {
+        HotkeyAction.SwitchToTask => $"Switch to task {TaskOrder}",
+        HotkeyAction.ShowAll => "Show all windows",
+        HotkeyAction.PanicRestore => "Restore everything (panic)",
+        HotkeyAction.ToggleWindow => "Show or hide HydraWin",
+        _ => "Unrecognised",
+    };
+
+    /// <summary>
+    /// Splits a written combination back into <see cref="Modifiers"/> and <see cref="Key"/>.
+    /// </summary>
+    /// <remarks>
+    /// The inverse of <see cref="ToDisplayString"/>, and the only place the capture box in the
+    /// settings dialog needs to know about the storage format. It does not validate — that is
+    /// <see cref="TryResolve"/>'s job, which the caller runs next.
+    /// </remarks>
+    public static (string Modifiers, string Key) Split(string combination)
+    {
+        ArgumentNullException.ThrowIfNull(combination);
+
+        int last = combination.LastIndexOf('+');
+        return last < 0
+            ? (string.Empty, combination.Trim())
+            : (combination[..last].Trim(), combination[(last + 1)..].Trim());
+    }
+
+    /// <summary>
     /// Turns the written form into what <c>RegisterHotKey</c> needs.
     /// </summary>
     /// <returns>

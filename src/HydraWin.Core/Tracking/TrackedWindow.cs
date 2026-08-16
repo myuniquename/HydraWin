@@ -20,7 +20,8 @@ public sealed class TrackedWindow
     /// <summary>
     /// Full image path of the owning process, or empty when the process could not be opened or
     /// queried. Task 01 measured that plain elevation does <em>not</em> prevent this, so an empty
-    /// value means a genuinely protected process. Task 10 surfaces that in the UI.
+    /// value means a genuinely protected process — which has no durable name to write a re-attach
+    /// rule against, so <see cref="Workspaces.RuleMatcher"/> refuses to claim one.
     /// </summary>
     public required string ProcessPath { get; set; }
 

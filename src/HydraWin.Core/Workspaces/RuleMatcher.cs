@@ -31,10 +31,8 @@ public static class RuleMatcher
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(window);
 
-        string processFileName = window.ProcessFileName;
-        if (string.IsNullOrEmpty(processFileName))
+        if (Identify(window) is not string processFileName)
         {
-            // A protected process HydraWin cannot identify; nothing durable to match on.
             return null;
         }
 
@@ -50,5 +48,37 @@ public static class RuleMatcher
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Returns the always-visible pin that recognises this window, or <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Callers check this <em>before</em> <see cref="FindTask"/>: a window the user pinned to stay
+    /// on screen must not be claimed by a task rule that also matches it, or the next switch would
+    /// hide the very window pinning was meant to keep.
+    /// </remarks>
+    public static WindowAssignment? FindGlobal(WorkspaceState state, TrackedWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(window);
+
+        if (Identify(window) is not string processFileName)
+        {
+            return null;
+        }
+
+        return state.GlobalWindows.Find(
+            a => !a.IsBound && a.Rule.Matches(processFileName, window.Title));
+    }
+
+    /// <summary>
+    /// The name a rule matches on, or <see langword="null"/> for a protected process HydraWin
+    /// cannot identify — nothing durable to match on.
+    /// </summary>
+    private static string? Identify(TrackedWindow window)
+    {
+        string processFileName = window.ProcessFileName;
+        return string.IsNullOrEmpty(processFileName) ? null : processFileName;
     }
 }

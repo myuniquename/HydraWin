@@ -7,5 +7,11 @@
         because the restore-all command line path must not start the UI.
     -->
     <Application.Resources>
+        <!--
+            Converters used by more than one window live here rather than in MainWindow's
+            resources, which is where they started when it was the only window.
+        -->
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <local:StringToVisibilityConverter x:Key="StringToVisibility" />
     </Application.Resources>
 </Application>

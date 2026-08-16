@@ -4,8 +4,8 @@ namespace HydraWin.Core.Persistence;
 /// Where HydraWin keeps its files. The one place <c>%APPDATA%\HydraWin\</c> is spelled out.
 /// </summary>
 /// <remarks>
-/// Task 10 adds the <c>logs\</c> directory. <see cref="JsonStore{T}"/> itself stays path-agnostic
-/// so every store can be tested against a temp directory.
+/// <see cref="JsonStore{T}"/> and <see cref="Diagnostics.AppLog"/> both stay path-agnostic so they
+/// can be tested against a temp directory; these are only the defaults the app runs with.
 /// </remarks>
 public static class HydraWinPaths
 {
@@ -23,4 +23,10 @@ public static class HydraWinPaths
     /// their windows.
     /// </summary>
     public static string JournalFile { get; } = Path.Combine(AppDataDirectory, "journal.json");
+
+    /// <summary>Where the rolling activity log lives. Diagnostics only; safe to delete.</summary>
+    public static string LogDirectory { get; } = Path.Combine(AppDataDirectory, "logs");
+
+    /// <summary>The current log file. Rolled to <c>hydrawin.1.log</c> when it grows too large.</summary>
+    public static string LogFile { get; } = Path.Combine(LogDirectory, "hydrawin.log");
 }

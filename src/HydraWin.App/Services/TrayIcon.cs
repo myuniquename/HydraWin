@@ -20,15 +20,21 @@ internal sealed class TrayIcon : IDisposable
     private readonly MainViewModel viewModel;
     private bool disposed;
 
-    internal TrayIcon(MainViewModel viewModel, Action openWindow, Action<bool> exit)
+    internal TrayIcon(
+        MainViewModel viewModel,
+        Action openWindow,
+        Action<bool> exit,
+        Action openSettings)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(openWindow);
         ArgumentNullException.ThrowIfNull(exit);
+        ArgumentNullException.ThrowIfNull(openSettings);
 
         this.viewModel = viewModel;
         OpenWindow = openWindow;
         Exit = exit;
+        OpenSettings = openSettings;
 
         var menu = new ContextMenu();
         menu.Opened += (_, _) => Rebuild(menu);
@@ -49,6 +55,9 @@ internal sealed class TrayIcon : IDisposable
 
     /// <summary>Ends the app; the flag forces the restore even if the setting is off.</summary>
     private Action<bool> Exit { get; }
+
+    /// <summary>Opens the settings dialog, so it is reachable without the main window in front.</summary>
+    private Action OpenSettings { get; }
 
     /// <summary>Shows the number of windows waiting to be looked at in the tray tooltip.</summary>
     internal void UpdatePendingCount(int pending) =>
@@ -99,6 +108,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(new Separator());
         Add(menu, "Show all windows", () => viewModel.ShowAllCommand.Execute(null));
         Add(menu, "Open HydraWin", OpenWindow);
+        Add(menu, "Settings…", OpenSettings);
 
         menu.Items.Add(new Separator());
 
@@ -118,7 +128,21 @@ internal sealed class TrayIcon : IDisposable
         // setting, which is the only way a user can deliberately leave windows hidden.
         Add(menu, "Restore all & exit", () => Exit(true));
         Add(menu, "Exit", () => Exit(false));
+
+#if DEBUG
+        // The crash drill from task 10 § E: proves the handler logs, restores and then lets the
+        // process die. Debug-only, because a menu item that deliberately crashes has no business
+        // in a build the user runs.
+        menu.Items.Add(new Separator());
+        Add(menu, "Throw a test exception (debug)", ThrowTestException);
+#endif
     }
+
+#if DEBUG
+    /// <summary>The crash drill. Throws on the dispatcher, which is the path users would hit.</summary>
+    private static void ThrowTestException() =>
+        throw new InvalidOperationException("Deliberate test exception from the tray menu.");
+#endif
 
     private static void Add(ContextMenu menu, string header, Action action)
     {

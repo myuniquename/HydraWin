@@ -16,7 +16,7 @@ and ground rules — lives in `_plan.md`; this file is the only place task statu
 | 07 | `07_ui_shell.md` | done (2026-08-16) — accepted by the user |
 | 08 | `08_tray_and_hotkeys.md` | done (2026-08-16) — accepted by the user |
 | 09 | `09_notifications.md` | done (2026-08-16) — accepted by the user |
-| 10 | `10_hardening_polish.md` | not started |
+| 10 | `10_hardening_polish.md` | done (2026-08-16) — awaiting the user's acceptance |
 | 11 | `11_promote_docs.md` | not started |
 
 ## Progress
@@ -28,13 +28,19 @@ through the journal, lives in the tray, and tells you when a backgrounded window
 
 **One thing task 09 carries forward unproven:** a Windows Terminal bell did not produce a badge in
 testing, which matters because that is the channel Claude Code notifies on. Everything else in that
-task was verified live, including badging a window HydraWin had hidden. Task 10 should confirm it
-against a real Claude Code session — see 09's record.
+task was verified live, including badging a window HydraWin had hidden — see 09's record.
 
-**Outstanding: 10 (hardening and polish), 11 (promote `docs/`).** Without 10 there is no settings UI
-and no rule editor — both of which several earlier tasks defer to, task 09's notification rules
-included. Task 11 has not run, so `docs/` is still empty and this folder is still the only home for
-the project's findings.
+**Task 10 is implemented and awaiting the user's acceptance walkthrough (2026-08-16).** It closes
+the deferred edges: always-visible pinned windows, the settings dialog (general, hotkey editor,
+notification rules), the re-attach rule editor with live preview, a rolling activity log and crash
+handlers that restore every hidden window before letting the process die. Two of its sections
+changed shape first, both with the user: § A's shield was superseded by task 07's exclusion of
+elevated windows, and **launch at login was dropped from the project** rather than deferred again.
+The multi-monitor clamp turned out to be unnecessary — measured, not assumed. Its own § Verification
+1 (elevated Notepad) and the disconnect/reconnect check need the user's hardware.
+
+**Outstanding: 11 (promote `docs/`).** It has not run, so `docs/` is still empty and this folder is
+still the only home for the project's findings.
 
 ## Where the detail is
 
