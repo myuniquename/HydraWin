@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"
+     role="img" aria-labelledby="title desc">
+  <title id="title">HydraWin</title>
+  <desc id="desc">Three task windows fanned from a common point, the active one forward.</desc>
+
+  <!--
+    Many heads, one body: three task windows in the first three colours of the app's own task
+    palette, the active one upright and in front.
+
+    Sized and spaced against an actual 16 px render, not by eye at full size. The mark fills ~76%
+    of the plate and the fan is wide enough that the orange and green read as separate shapes once
+    the dark separating strokes stop resolving. Deliberately flat - no filters, no gradients on the
+    shapes - so it survives whatever SVG-to-ICO converter it meets.
+  -->
+
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26344B" />
+      <stop offset="1" stop-color="#121A26" />
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="114" fill="url(#plate)" />
+
+  <!-- Back left head. #FF8A4C is task colour 2. No title bar: at any size where it would show,
+       the front tile covers it, and it only muddies the silhouette. -->
+  <g transform="rotate(-22 176 228)">
+    <rect x="88" y="153" width="176" height="150" rx="22"
+          fill="#FF8A4C" stroke="#131B28" stroke-width="16" />
+  </g>
+
+  <!-- Back right head. #4CC38A is task colour 3. -->
+  <g transform="rotate(22 336 228)">
+    <rect x="248" y="153" width="176" height="150" rx="22"
+          fill="#4CC38A" stroke="#131B28" stroke-width="16" />
+  </g>
+
+  <!-- The active head: larger, upright, in front, in task colour 1 - the same #4C8DFF the UI uses
+       for the active-task border. The title bar is what makes it read as a window rather than a
+       card; it fades out below about 24 px, which is the intended graceful failure. -->
+  <rect x="150" y="206" width="212" height="176" rx="26"
+        fill="#4C8DFF" stroke="#131B28" stroke-width="16" />
+  <rect x="178" y="234" width="132" height="20" rx="10" fill="#FFFFFF" opacity="0.78" />
+</svg>
