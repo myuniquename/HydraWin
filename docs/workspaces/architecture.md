@@ -265,6 +265,20 @@ Two binding rules, both deliberate: a rule binds **at most one window at a time*
 matching window stays unassigned for the user to place rather than silently displacing the first;
 and a window that is already bound is never rebound.
 
+**A window is offered to the rules twice: when it appears, and whenever it renames itself.** The
+appear edge alone is not enough, and browsers are the proof — a browser window exists, and is
+tracked, a moment before it knows what page it is showing, so the rules see a placeholder title,
+match nothing, and the window would sit in the unassigned pane for the rest of the session however
+plainly it later said which task it belonged to. Measured on Edge: the window appears, and the
+title arrives some hundreds of milliseconds later. Offering it again on rename costs a dictionary
+lookup for a bound window, which matters because a working Claude Code terminal renames itself
+about once a second.
+
+Re-attaching **does not hide the window**, even when the task it joins is not the active one. A
+window the user just opened disappearing as they look at it would be a worse bug than the one this
+avoids; it takes its place in the task at the next switch, exactly as an assignment made by hand
+does.
+
 A malformed or slow user-authored regex counts as **no match** rather than throwing. This runs on
 the window-tracking path, where a bad pattern must cost its own rule and nothing else; patterns are
 compiled with a 100 ms timeout.

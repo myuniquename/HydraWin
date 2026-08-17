@@ -308,6 +308,31 @@ public sealed class WorkspaceService
     }
 
     /// <summary>
+    /// A tracked window renamed itself: offers it to the rules again, so one that appeared under
+    /// a placeholder title still finds its task.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Appearing is not the only moment a window becomes recognisable. A browser window exists —
+    /// and raises <c>WindowAppeared</c> — a moment before it knows what page it is showing, and
+    /// while the appear edge was the only place the rules ran, such a window stayed unassigned for
+    /// the rest of the session however clearly its title later said which task it belonged to.
+    /// </para>
+    /// <para>
+    /// This does <em>not</em> hide the window when the task it joins is not the active one. A
+    /// window the user just opened vanishing as they look at it would be a worse bug than the one
+    /// this fixes; it takes its place in the task at the next switch, exactly as an assignment
+    /// made by hand does.
+    /// </para>
+    /// <para>
+    /// A window that is already bound returns on a dictionary lookup, which matters: this runs on
+    /// the title-change path, and a working Claude Code terminal renames itself about once a
+    /// second.
+    /// </para>
+    /// </remarks>
+    public void OnWindowTitleChanged(TrackedWindow window) => OnWindowAppeared(window);
+
+    /// <summary>
     /// Drops a window's binding while keeping its rule, so it re-attaches when it comes back.
     /// Task 06 also calls this for a window that died while hidden.
     /// </summary>

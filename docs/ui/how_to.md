@@ -187,10 +187,9 @@ of whatever happens to be open.
 2. **Delete `state.json`** and write the demo tasks by hand: a `ReattachRule` per window, matching
    `ProcessFileName` plus a title substring. Terminals take any title you like
    (`$Host.UI.RawUI.WindowTitle`), which is also how you stage a Claude Code activity marker.
-3. **Start the demo windows before HydraWin.** Rules are evaluated on *window-appeared* and never
-   again, so an app that appears with a placeholder title and renames itself a second later — a
-   browser, always — is left unassigned. Launching it first and starting HydraWin after it is the
-   whole fix.
+3. **Give a browser a couple of seconds** before shooting. It appears under a placeholder title and
+   only says what page it is showing a moment later; the rules are offered again on that rename, so
+   it does re-attach either way — just not instantly.
 4. Drive the rest with the hotkeys and the mouse: `Ctrl+Alt+<n>` to switch, so the hidden chips and
    the switch summary are real, and `FlashWindowEx` against a hidden window for a badge — the same
    `HSHELL_FLASH` any application would raise.

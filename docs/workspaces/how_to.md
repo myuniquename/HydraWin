@@ -68,7 +68,8 @@ shows itself immediately. A title pattern is a substring unless you tick the reg
 
 **Verify:** close the application, reopen it, and watch the status bar say
 *Re-attached "…" to "…"*. That is the only real proof — the rule is exercised on reappearance, not
-on save.
+on save. A browser is worth testing too: it appears under a placeholder title and is claimed a
+moment later, when it renames itself to the page it is showing.
 
 ## Hand-edit the model
 

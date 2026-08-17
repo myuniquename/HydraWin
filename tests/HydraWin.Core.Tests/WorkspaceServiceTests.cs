@@ -150,6 +150,61 @@ public sealed class WorkspaceServiceTests : IDisposable
     }
 
     [Fact]
+    public void AWindowThatRenamesItselfIntoARuleStillReattaches()
+    {
+        // A browser window exists before it knows what page it is showing, so the appear edge
+        // sees a placeholder and no rule can match it. The rename is the second chance.
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        service.AssignWindow(alpha.Id, Window("msedge.exe", "Window Features | Microsoft Learn", 0x10));
+        service.OnWindowDisappeared(0x10);
+
+        service.OnWindowAppeared(Window("msedge.exe", "New tab", 0x99));
+        Assert.False(service.IsBound(0x99));
+
+        AssignmentChangedEventArgs? reattached = null;
+        service.WindowReattached += (_, e) => reattached = e;
+
+        service.OnWindowTitleChanged(Window("msedge.exe", "Window Features | Microsoft Learn", 0x99));
+
+        Assert.True(service.IsBound(0x99));
+        Assert.Same(alpha, service.FindTaskOf(0x99));
+        Assert.NotNull(reattached);
+        Assert.Same(alpha, reattached.Task);
+    }
+
+    [Fact]
+    public void ARenameDoesNotMoveAWindowThatIsAlreadyBound()
+    {
+        // Titles change constantly; membership must not follow them around, or a task would lose
+        // windows to another task's rule just because someone opened a different file.
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        HydraWinTask beta = service.CreateTask("Beta");
+        service.AssignWindow(alpha.Id, Window("Code.exe", "hydrawin", 0x10));
+        service.AssignWindow(beta.Id, Window("Code.exe", "docs", 0x20));
+        service.OnWindowDisappeared(0x20);
+        int reattachCount = 0;
+        service.WindowReattached += (_, _) => reattachCount++;
+
+        service.OnWindowTitleChanged(Window("Code.exe", "docs", 0x10));
+
+        Assert.Same(alpha, service.FindTaskOf(0x10));
+        Assert.Equal(0, reattachCount);
+    }
+
+    [Fact]
+    public void ARenameThatMatchesNoRuleLeavesTheWindowUnassigned()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        service.AssignWindow(alpha.Id, Window("Code.exe", "hydrawin", 0x10));
+        service.OnWindowDisappeared(0x10);
+
+        service.OnWindowTitleChanged(Window("chrome.exe", "something else entirely", 0x99));
+
+        Assert.False(service.IsBound(0x99));
+        Assert.Null(service.FindTaskOf(0x99));
+    }
+
+    [Fact]
     public void AnAlreadyBoundWindowIsNotRebound()
     {
         HydraWinTask alpha = service.CreateTask("Alpha");

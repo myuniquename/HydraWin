@@ -881,6 +881,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             window.Title = e.NewTitle;
         }
 
+        // A window that appeared under a placeholder title — every browser does — gets another
+        // look now that it says what it is. Bound windows return on a lookup, and a rebuild only
+        // happens if a rule actually claims it, through WindowReattached.
+        workspaces.OnWindowTitleChanged(e.Window);
+
         // Rules are edge-triggered and none ship enabled, so this is normally a no-op.
         notifications.OnTitleChanged(e.Window, e.OldTitle, e.NewTitle);
     }
