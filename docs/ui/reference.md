@@ -66,7 +66,7 @@ on OK.
 
 | Tab | Contents |
 | --- | --- |
-| General | Restore hidden windows on exit · Close to tray · Stay on top · Tray balloon on notification |
+| General | Restore hidden windows on exit · Close to tray · Stay on top · Tray balloon on notification · Appearance |
 | Hotkeys | One capture box per action, with the reason shown inline when a combination is unusable |
 | Notifications | Add / edit / delete title rules, with a live preview of what each currently matches |
 
@@ -96,6 +96,56 @@ Rebuilt each time it opens.
 | Restore all & exit | Unconditional: restores, then exits |
 | Exit | Honours the restore-on-exit setting |
 | Throw a test exception | **Debug builds only** — the crash drill |
+
+## Appearance
+
+`SettingsModel.Appearance` in `state.json`, written as a name. It is the preference; what actually
+gets painted also depends on the OS.
+
+| Stored value | Meaning |
+| --- | --- |
+| `"System"` | Follow the Windows app theme, and keep following it while HydraWin runs. The default, and what an absent property means |
+| `"Light"` | Always light |
+| `"Dark"` | Always dark |
+
+`AppearanceResolver.Resolve(requested, systemIsDark, highContrast)` turns that into an
+`EffectiveTheme` of `Light`, `Dark` or `HighContrast`. **High contrast wins over all three.**
+`systemIsDark` is `AppsUseLightTheme == 0` under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` — read-only, and the sibling
+`SystemUsesLightTheme` is a different setting governing taskbar and Start chrome. A missing or
+unreadable value means light.
+
+## Theme brush keys
+
+The palettes are `src/HydraWin.App/Themes/Palette.Light.xaml`, `Palette.Dark.xaml` and
+`Palette.HighContrast.xaml`. All three define the same 44 keys; the high-contrast one maps each onto
+a `SystemColors` *`ColorKey`* rather than a literal. The templates that consume them are
+`Themes/Controls.Inputs.xaml`, `Controls.Menus.xaml` and `Controls.Panels.xaml`.
+
+| Key | Used for |
+| --- | --- |
+| `WindowBackgroundBrush` · `ChromeBackgroundBrush` | Client area; toolbar and status bar |
+| `HairlineBrush` | Every 1 px rule: chrome edges, task-row borders, card and preview borders |
+| `TextPrimaryBrush` · `TextSecondaryBrush` · `TextTertiaryBrush` | Body text, supporting text, labels and counts |
+| `AccentBrush` | Active-task border, activity glyph, crosshair, focus, checked state |
+| `ActiveTaskBackgroundBrush` | Fill behind the active task row |
+| `NotificationBrush` · `TextOnAccentBrush` | Badge and attention dot; the badge digit |
+| `ChipNeutralBackgroundBrush` / `…ForegroundBrush` | The **hidden** row chip |
+| `ChipWarningBackgroundBrush` / `…ForegroundBrush` | The **won't hide** row chip |
+| `IconPlaceholderBrush` | The dot behind a window row's icon when the process has none |
+| `ErrorTextBrush` | Validation messages in both dialogs |
+| `DropTargetFillBrush` · `DropTargetEdgeBrush` · `InsertionLineBrush` | Drag adorners, via `Themes/ThemeBrushes.cs` |
+| `ControlBackgroundBrush` · `ControlBorderBrush` · `ControlHover…` · `ControlPressed…` · `ControlDisabled…` · `TextDisabledBrush` | Buttons, toggles, combo faces |
+| `FieldBackgroundBrush` · `FieldBorderBrush` · `CaretBrush` · `SelectionBrush` | Text boxes, including every `HotkeyBox` |
+| `CheckGlyphBrush` | The tick in a check box and in a checked menu item |
+| `ScrollBarThumbBrush` · `…Hover` · `…Pressed` | Scrollbar thumbs; there are no arrow buttons |
+| `MenuBackgroundBrush` · `MenuBorderBrush` · `MenuItemHoverBackgroundBrush` · `MenuSeparatorBrush` | Context menus, including the tray menu |
+| `TooltipBackgroundBrush` · `TooltipBorderBrush` | Tool tips |
+| `TabStripBackgroundBrush` · `TabItemHoverBackgroundBrush` · `TabItemSelectedBackgroundBrush` | The settings dialog's tabs |
+
+Outside the palette on purpose: the eight per-task colours in `state.json` (user data), the picker
+overlay's transparent background (load-bearing for `WS_EX_LAYERED`), the delete-task `MessageBox`
+and the tray balloon (both drawn by Windows).
 
 ## Process lifecycle
 
@@ -139,6 +189,12 @@ because the .NET 10 SDK no longer runs xunit v3 projects through VSTest — a ba
 `dotnet test HydraWin.sln` is interpreted differently. `global.json` pins no SDK version, only the
 test runner.
 
+If `dotnet test` reports **`Zero tests ran`** with an error and no discovery output, that is the
+Microsoft.Testing.Platform host failing under `--server dotnettestcli`, not an empty test suite. The
+test project is `OutputType=Exe`, so run it directly to get the real totals:
+`tests/HydraWin.Core.Tests/bin/Debug/net10.0-windows/HydraWin.Core.Tests.exe`. Never report the
+`dotnet test` exit code in place of the counts.
+
 `<AllowUnsafeBlocks>` is enabled on **Core only**: `[LibraryImport]`'s source-generated marshalling
 requires it (`SYSLIB1062`), and Core is the one project allowed to declare P/Invoke.
 
@@ -166,3 +222,9 @@ If you regenerate it, **assert that each render came out at the size you asked f
 attempt shipped an `.ico` whose directory claimed every size but whose entries all held the same
 oversized image, and Windows drew the taskbar icon as a smudge — the renderer had silently ignored
 a malformed size argument.
+
+**There is one icon, and there should stay one.** The plate is already dark (`#26344B`→`#121A26`)
+under bright shapes, so it reads on a light or a dark taskbar. A light variant would also have to be
+driven by `SystemUsesLightTheme` — the taskbar and Start setting — not by the `AppsUseLightTheme`
+that drives everything else here, and users routinely set those two differently, so it would be
+wrong about half the time.

@@ -90,6 +90,18 @@ All four are rebindable in **Settings ▸ Hotkeys**. Panic restore is deliberate
 hotkeys run on a thread of their own and the restore happens inline on that thread, so it still
 works when the user interface is wedged.
 
+## Light and dark
+
+HydraWin follows the Windows app theme, and follows it *live* — flip Windows between light and dark
+and the window, its dialogs, its menus and its title bar change with it, no restart. If you would
+rather pin one, **Settings ▸ General ▸ Appearance** offers *Follow Windows*, *Light* and *Dark*.
+
+A Windows high-contrast scheme overrides all three: HydraWin repaints in that scheme's own colours
+rather than painting over an accessibility setting you chose deliberately.
+
+One honest gap: the "delete this task?" confirmation is a Windows message box, so it stays light in
+a dark theme. Nothing in the application can change that.
+
 ## Notifications
 
 A hidden window can still ask for attention. Each task row carries a red badge counting the windows
@@ -131,7 +143,9 @@ The exact settings and the measurements are in
 
 ## Your data on disk
 
-Everything HydraWin keeps lives in `%APPDATA%\HydraWin\`. It writes **no registry key**.
+Everything HydraWin keeps lives in `%APPDATA%\HydraWin\`. It writes **no registry key** — it reads
+exactly one, the Windows app-theme preference, so that following your desktop's light or dark
+setting works.
 
 | File | What it holds |
 | --- | --- |
@@ -201,7 +215,7 @@ front door; anything below the surface is written up there.
 | --- | --- |
 | Window inventory, task model, switching, crash recovery | [`docs/workspaces/`](docs/workspaces/README.md) |
 | How a hidden window asks for attention, and what it costs | [`docs/notifications/`](docs/notifications/README.md) |
-| The shell: rows, gestures, tray, hotkeys, dialogs, lifecycle | [`docs/ui/`](docs/ui/README.md) |
+| The shell: rows, gestures, tray, hotkeys, dialogs, theming, lifecycle | [`docs/ui/`](docs/ui/README.md) |
 
 Each folder holds the same four files — `README.md` is the hub and its table says which of the
 others answers your question, `architecture.md` explains how something works and why,

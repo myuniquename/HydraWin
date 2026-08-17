@@ -1,13 +1,16 @@
-<Window x:Class="HydraWin.App.Views.RuleEditorWindow"
+﻿<Window x:Class="HydraWin.App.Views.RuleEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Re-attach rule" Height="440" Width="520"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        ResizeMode="CanResizeWithGrip"
-        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+        ResizeMode="CanResize">
 
     <DockPanel Margin="12">
-        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,10"
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
                    Text="How HydraWin recognises this window again after it — or the window — has been restarted. Handles change between runs; this rule is what puts the window back in its task." />
 
         <Border DockPanel.Dock="Bottom" Margin="0,10,0,0">
@@ -45,7 +48,8 @@
             <CheckBox Grid.Row="2" Grid.Column="1" Content="Title is a regular expression"
                       Margin="0,0,0,6" IsChecked="{Binding TitleIsRegex}" />
 
-            <TextBlock Grid.Row="3" Grid.Column="1" Foreground="#C4314B" TextWrapping="Wrap"
+            <TextBlock Grid.Row="3" Grid.Column="1" TextWrapping="Wrap"
+                       Foreground="{DynamicResource ErrorTextBrush}"
                        Margin="0,0,0,6" Text="{Binding Error}"
                        Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
         </Grid>
@@ -53,7 +57,8 @@
         <DockPanel Margin="0,6,0,0">
             <TextBlock DockPanel.Dock="Top" Text="{Binding PreviewCaption}" FontWeight="SemiBold"
                        Margin="0,0,0,4" />
-            <Border BorderBrush="#E1E5EA" BorderThickness="1" CornerRadius="3" Padding="4">
+            <Border BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
+                    CornerRadius="3" Padding="4">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding Preview}">
                         <ItemsControl.ItemTemplate>

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Media;
+using HydraWin.App.Themes;
 
 namespace HydraWin.App;
 
@@ -227,11 +228,16 @@ internal sealed class DragGhostAdorner : Adorner
 }
 
 /// <summary>An accent outline over the row that will receive the drop.</summary>
+/// <remarks>
+/// The brush and pen come from <see cref="ThemeBrushes"/> rather than being literals, and they are
+/// read here in the constructor rather than in <c>OnRender</c>: an adorner is created fresh at the
+/// start of each drag, so this picks up the current theme once instead of allocating a pen per
+/// frame. A theme change mid-drag keeps the colours the drag started with.
+/// </remarks>
 internal sealed class HighlightAdorner : Adorner
 {
-    private static readonly Brush Fill = Freeze(new SolidColorBrush(Color.FromArgb(40, 76, 141, 255)));
-    private static readonly Pen Edge = Freeze(new Pen(
-        Freeze(new SolidColorBrush(Color.FromRgb(76, 141, 255))), 2));
+    private readonly Brush fill = ThemeBrushes.DropTargetFill;
+    private readonly Pen edge = ThemeBrushes.DropTargetEdge;
 
     internal HighlightAdorner(UIElement adornedElement)
         : base(adornedElement) => IsHitTestVisible = false;
@@ -240,21 +246,14 @@ internal sealed class HighlightAdorner : Adorner
     {
         ArgumentNullException.ThrowIfNull(drawingContext);
         var bounds = new Rect(AdornedElement.RenderSize);
-        drawingContext.DrawRoundedRectangle(Fill, Edge, Rect.Inflate(bounds, -1, -1), 4, 4);
-    }
-
-    private static T Freeze<T>(T freezable)
-        where T : Freezable
-    {
-        freezable.Freeze();
-        return freezable;
+        drawingContext.DrawRoundedRectangle(fill, edge, Rect.Inflate(bounds, -1, -1), 4, 4);
     }
 }
 
 /// <summary>A line showing where a dragged task will land.</summary>
 internal sealed class InsertionAdorner : Adorner
 {
-    private static readonly Pen Line = CreatePen();
+    private readonly Pen line = ThemeBrushes.InsertionLine;
 
     internal InsertionAdorner(UIElement adornedElement)
         : base(adornedElement) => IsHitTestVisible = false;
@@ -266,15 +265,6 @@ internal sealed class InsertionAdorner : Adorner
     {
         ArgumentNullException.ThrowIfNull(drawingContext);
         double y = Below ? AdornedElement.RenderSize.Height : 0;
-        drawingContext.DrawLine(Line, new Point(0, y), new Point(AdornedElement.RenderSize.Width, y));
-    }
-
-    private static Pen CreatePen()
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(76, 141, 255));
-        brush.Freeze();
-        var pen = new Pen(brush, 3);
-        pen.Freeze();
-        return pen;
+        drawingContext.DrawLine(line, new Point(0, y), new Point(AdornedElement.RenderSize.Width, y));
     }
 }

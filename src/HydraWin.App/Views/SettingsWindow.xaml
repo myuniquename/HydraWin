@@ -1,11 +1,14 @@
-<Window x:Class="HydraWin.App.Views.SettingsWindow"
+﻿<Window x:Class="HydraWin.App.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:HydraWin.App.Controls"
+        xmlns:vm="clr-namespace:HydraWin.App.ViewModels"
         Title="HydraWin settings" Height="560" Width="640"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
-        ResizeMode="CanResizeWithGrip"
-        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+        ResizeMode="CanResize">
 
     <DockPanel Margin="12">
         <Border DockPanel.Dock="Bottom" Margin="0,12,0,0">
@@ -31,15 +34,42 @@
                               IsChecked="{Binding NotificationToasts}" Margin="0,0,0,10"
                               ToolTip="The badge on the task row is always shown; this adds a pop-up as well." />
 
-                    <TextBlock TextWrapping="Wrap" Opacity="0.6" Margin="0,10,0,0"
+                    <!--
+                        The tab's first control that is not a bool. It takes effect on OK like
+                        everything else here — this dialog edits copies, and a live preview would
+                        make Cancel a lie.
+                    -->
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,10">
+                        <TextBlock Text="Appearance" VerticalAlignment="Center"
+                                   Margin="0,0,10,0" />
+                        <ComboBox Width="170"
+                                  ItemsSource="{Binding Source={x:Static
+                                      vm:SettingsViewModel.AppearanceOptions}}"
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding Appearance}"
+                                  ToolTip="Follow Windows tracks the system app theme while HydraWin runs. A Windows high-contrast theme always wins.">
+                            <!-- An explicit ItemTemplate rather than DisplayMemberPath: the
+                                 template's face reads SelectionBoxItemTemplate, which
+                                 DisplayMemberPath does not populate, so the closed combo showed
+                                 the record's ToString(). -->
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <TextBlock TextWrapping="Wrap" Margin="0,10,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                Text="Everything here is stored in state.json, which stays hand-editable." />
                 </StackPanel>
             </TabItem>
 
             <TabItem Header="Hotkeys">
                 <DockPanel Margin="12">
-                    <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Opacity="0.7"
-                               Margin="0,0,0,10"
+                    <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,10"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                Text="Click a box and press the combination you want. Backspace clears it — an empty box means no hotkey for that action. A combination another application already owns simply fails to register, and HydraWin says so on startup." />
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -64,7 +94,8 @@
                                                             Padding="3,2"
                                                             Combination="{Binding Combination, Mode=TwoWay}" />
 
-                                        <TextBlock Grid.Row="1" Grid.Column="1" Foreground="#C4314B"
+                                        <TextBlock Grid.Row="1" Grid.Column="1"
+                                                   Foreground="{DynamicResource ErrorTextBrush}"
                                                    FontSize="11" TextWrapping="Wrap"
                                                    Margin="0,2,0,0" Text="{Binding Error}"
                                                    Visibility="{Binding HasError,
@@ -79,8 +110,8 @@
 
             <TabItem Header="Notifications">
                 <DockPanel Margin="12">
-                    <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Opacity="0.7"
-                               Margin="0,0,0,10"
+                    <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,10"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                Text="Badges normally come from the taskbar flash, which works for any application with no rule at all. These are for programs that announce something in their window title and never flash. A pattern that is not a valid regular expression is saved switched off." />
 
                     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
@@ -94,7 +125,7 @@
                         <ItemsControl ItemsSource="{Binding NotificationRules}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border BorderBrush="#E1E5EA" BorderThickness="1"
+                                    <Border BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="1"
                                             CornerRadius="3" Padding="8" Margin="0,0,0,8"
                                             Background="Transparent"
                                             PreviewMouseLeftButtonDown="OnRuleClicked">
@@ -120,7 +151,8 @@
 
                                                 <TextBlock Grid.Column="2" Text="title matches"
                                                            VerticalAlignment="Center"
-                                                           Margin="0,0,8,0" Opacity="0.7" />
+                                                           Margin="0,0,8,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
 
                                                 <TextBox Grid.Column="3" Padding="3,2"
                                                          Text="{Binding TitleRegex,
@@ -136,19 +168,22 @@
 
                                                 <TextBlock Grid.Column="0" Text="Badge label"
                                                            VerticalAlignment="Center"
-                                                           Margin="0,0,8,0" Opacity="0.7" />
+                                                           Margin="0,0,8,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 <TextBox Grid.Column="1" Padding="3,2"
                                                          Text="{Binding Label,
                                                                         UpdateSourceTrigger=PropertyChanged}"
                                                          ToolTip="Empty falls back to the window's own name" />
                                             </Grid>
 
-                                            <TextBlock Margin="0,6,0,0" FontSize="11" Opacity="0.7"
+                                            <TextBlock Margin="0,6,0,0" FontSize="11"
                                                        TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                        Text="{Binding Preview}" />
 
                                             <TextBlock Margin="0,2,0,0" FontSize="11"
-                                                       Foreground="#C4314B" TextWrapping="Wrap"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource ErrorTextBrush}"
                                                        Text="{Binding Error}"
                                                        Visibility="{Binding HasError,
                                                                             Converter={StaticResource BoolToVisibility}}" />

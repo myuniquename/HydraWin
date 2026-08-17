@@ -1,4 +1,5 @@
 using System.Windows;
+using HydraWin.App.Themes;
 using HydraWin.App.ViewModels;
 using HydraWin.Core.Workspaces;
 
@@ -14,12 +15,14 @@ public partial class RuleEditorWindow : Window
     private readonly RuleEditorViewModel editor;
 
     /// <summary>Opens the editor for a window that belongs to a task.</summary>
-    public RuleEditorWindow(MainViewModel main, WindowViewModel window)
+    internal RuleEditorWindow(MainViewModel main, WindowViewModel window, ThemeManager theme)
     {
         ArgumentNullException.ThrowIfNull(main);
         ArgumentNullException.ThrowIfNull(window);
+        ArgumentNullException.ThrowIfNull(theme);
 
         InitializeComponent();
+        theme.TrackTitleBar(this);
 
         this.main = main;
         this.window = window;

@@ -28,6 +28,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         CloseToTray = main.CloseToTray;
         AlwaysOnTop = main.AlwaysOnTop;
         NotificationToasts = main.NotificationToasts;
+        Appearance = main.Appearance;
 
         foreach (HotkeyBinding binding in main.Hotkeys)
         {
@@ -55,6 +56,36 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Whether a new notification also raises a tray balloon.</summary>
     [ObservableProperty]
     public partial bool NotificationToasts { get; set; }
+
+    /// <summary>
+    /// Which palette to paint with.
+    /// </summary>
+    /// <remarks>
+    /// A copy like everything else here, so it takes effect on OK and not on selection. That is
+    /// deliberate rather than an oversight: a live preview would be nicer to use, but this dialog's
+    /// documented contract is that Cancel means nothing happened, and a theme that had already
+    /// changed would break it.
+    /// </remarks>
+    [ObservableProperty]
+    public partial Appearance Appearance { get; set; }
+
+    /// <summary>
+    /// The three choices, with the wording the dialog shows.
+    /// </summary>
+    /// <remarks>
+    /// A list of value/label pairs rather than an enum-to-string converter, so the labels sit next
+    /// to the values they belong to instead of in a converter nobody would think to look in.
+    /// </remarks>
+    /// <remarks>
+    /// Fully qualified because the <see cref="Appearance"/> property above shadows the type of the
+    /// same name inside this class.
+    /// </remarks>
+    public static IReadOnlyList<AppearanceOption> AppearanceOptions { get; } =
+    [
+        new(HydraWin.Core.Workspaces.Appearance.System, "Follow Windows"),
+        new(HydraWin.Core.Workspaces.Appearance.Light, "Light"),
+        new(HydraWin.Core.Workspaces.Appearance.Dark, "Dark"),
+    ];
 
     /// <summary>The editable hotkey rows.</summary>
     public ObservableCollection<HotkeyBindingViewModel> Hotkeys { get; } = [];
@@ -110,6 +141,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         CloseToTray,
         AlwaysOnTop,
         NotificationToasts,
+        Appearance,
         [.. Hotkeys.Select(h => h.ToBinding())],
         [.. NotificationRules.Select(r => r.ToRule())]);
 }
+
+/// <summary>One entry in the appearance picker.</summary>
+/// <param name="Value">The preference this entry stands for.</param>
+/// <param name="Label">What the dialog shows for it.</param>
+public sealed record AppearanceOption(Appearance Value, string Label);

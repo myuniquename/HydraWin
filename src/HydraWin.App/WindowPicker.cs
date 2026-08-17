@@ -208,6 +208,10 @@ internal sealed class WindowPicker : IDisposable
 
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
+
+            // AllowsTransparency and this literal Transparent background are load-bearing, not
+            // cosmetic: WPF strips WS_EX_LAYERED from a window whose AllowsTransparency is false,
+            // and the overlay depends on it. Neither belongs in the palette.
             AllowsTransparency = true;
             Background = Brushes.Transparent;
             ShowInTaskbar = false;
@@ -215,14 +219,20 @@ internal sealed class WindowPicker : IDisposable
             Topmost = true;
             IsHitTestVisible = false;
 
-            var accent = new SolidColorBrush(Color.FromRgb(0x4C, 0x8D, 0xFF));
-            accent.Freeze();
-            Content = new System.Windows.Controls.Border
+            var frame = new System.Windows.Controls.Border
             {
-                BorderBrush = accent,
                 BorderThickness = new Thickness(4),
                 Background = Brushes.Transparent,
             };
+
+            // A deferred reference rather than a literal, so the frame follows a theme change even
+            // mid-pick. This is the one code-drawn colour that has a DependencyProperty to hang one
+            // on; the drag adorners go through ThemeBrushes instead.
+            frame.SetResourceReference(
+                System.Windows.Controls.Border.BorderBrushProperty,
+                "AccentBrush");
+
+            Content = frame;
 
             // Off-screen until the first target, so it never flashes at the origin.
             Left = -32000;

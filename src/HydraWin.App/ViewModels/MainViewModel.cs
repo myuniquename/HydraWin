@@ -136,6 +136,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Whether a new notification also raises a tray balloon. Default off.</summary>
     public bool NotificationToasts => workspaces.State.Settings.NotificationToasts;
 
+    /// <summary>
+    /// Which palette the user asked for. Read-only here: only the settings dialog writes it, and the
+    /// App turns it into brushes.
+    /// </summary>
+    public Appearance Appearance => workspaces.State.Settings.Appearance;
+
     /// <summary>The title-watching notification rules, for the settings dialog to edit.</summary>
     public IReadOnlyList<NotificationRule> NotificationRules =>
         workspaces.State.Settings.NotificationRules;
@@ -153,19 +159,35 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? HotkeysChanged;
 
     /// <summary>
+    /// Raised when the appearance preference changed, so the App can re-apply the palette. Swapping
+    /// application resources is presentation plumbing and has no business in a view model, which is
+    /// why this is an event rather than a call.
+    /// </summary>
+    public event EventHandler? AppearanceChanged;
+
+    /// <summary>
     /// Writes the settings dialog's result through in one go, and reports what needs re-doing
     /// because of it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// One call rather than a property per setting: the dialog is modal and its OK is a single
     /// decision, so persisting once keeps <c>state.json</c> from being rewritten five times and
     /// keeps the hotkey re-registration to one pass.
+    /// </para>
+    /// <para>
+    /// <b>Seven parameters is the ceiling.</b> Sonar's S107 allows seven and rejects the eighth, so
+    /// the next setting added here has to change the shape — most likely into a single record of the
+    /// dialog's result. Do that rather than reaching for a suppression, which this repository does
+    /// not carry any of.
+    /// </para>
     /// </remarks>
     public void ApplySettings(
         bool restoreOnExit,
         bool closeToTray,
         bool alwaysOnTop,
         bool notificationToasts,
+        Appearance appearance,
         IReadOnlyList<HotkeyBinding> hotkeys,
         IReadOnlyList<NotificationRule> notificationRules)
     {
@@ -176,12 +198,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             .Select(b => (b.Action, b.TaskOrder, b.Modifiers, b.Key))
             .SequenceEqual(hotkeys.Select(b => (b.Action, b.TaskOrder, b.Modifiers, b.Key)));
 
+        bool appearanceDiffers = Appearance != appearance;
+
         workspaces.UpdateSettings(settings =>
         {
             settings.RestoreOnExit = restoreOnExit;
             settings.CloseToTray = closeToTray;
             settings.AlwaysOnTop = alwaysOnTop;
             settings.NotificationToasts = notificationToasts;
+            settings.Appearance = appearance;
             settings.Hotkeys = [.. hotkeys];
             settings.NotificationRules = [.. notificationRules];
         });
@@ -193,12 +218,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(RestoreOnExit));
         OnPropertyChanged(nameof(CloseToTray));
         OnPropertyChanged(nameof(NotificationToasts));
+        OnPropertyChanged(nameof(Appearance));
 
         Say("Settings saved.");
 
         if (hotkeysDiffer)
         {
             HotkeysChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        if (appearanceDiffers)
+        {
+            AppearanceChanged?.Invoke(this, EventArgs.Empty);
         }
 
         // A changed rule can make a pending badge wrong, and the cheapest honest answer is to let

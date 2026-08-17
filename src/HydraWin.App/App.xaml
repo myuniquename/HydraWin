@@ -7,11 +7,30 @@
         because the restore-all command line path must not start the UI.
     -->
     <Application.Resources>
-        <!--
-            Converters used by more than one window live here rather than in MainWindow's
-            resources, which is where they started when it was the only window.
-        -->
-        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-        <local:StringToVisibilityConverter x:Key="StringToVisibility" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!--
+                    Slot 0 is the palette, and ThemeManager replaces this entry in place at startup
+                    and on every theme change. The other three are theme-agnostic and stay put.
+
+                    Light is declared here rather than being loaded from code so the XAML designer
+                    resolves every brush key. Load both palettes from code instead and MainWindow
+                    previews as an empty rectangle, which reads as a bug in the templates rather
+                    than as a designer artefact.
+                -->
+                <ResourceDictionary Source="Themes/Palette.Light.xaml" />
+
+                <ResourceDictionary Source="Themes/Controls.Inputs.xaml" />
+                <ResourceDictionary Source="Themes/Controls.Menus.xaml" />
+                <ResourceDictionary Source="Themes/Controls.Panels.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!--
+                Converters used by more than one window live here rather than in MainWindow's
+                resources, which is where they started when it was the only window.
+            -->
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+            <local:StringToVisibilityConverter x:Key="StringToVisibility" />
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

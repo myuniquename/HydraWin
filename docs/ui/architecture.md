@@ -202,6 +202,130 @@ while focused, deliberately, or the interesting combinations could not be typed.
 Both preview live against the open windows, through one `RulePreview` helper in Core that calls the
 same matching the tracker uses.
 
+## Appearance and theming
+
+HydraWin follows the Windows app theme by default, and the user can override that with **Follow
+Windows / Light / Dark** on the settings dialog's *General* tab. `SettingsModel.Appearance` stores
+the preference by name in `state.json`; `AppearanceResolver.Resolve` in Core turns it, plus the two
+things the OS says, into an `EffectiveTheme` of `Light`, `Dark` or `HighContrast`.
+
+**High contrast beats an explicit override.** Someone who turned on a contrast scheme asked the
+operating system for particular colours for a reason, and no preference inside HydraWin is a good
+enough argument to paint over them. That is the only judgement call in the resolver and it is one
+line.
+
+### Where the colours live
+
+`src/HydraWin.App/Themes/` holds six dictionaries in two groups:
+
+- **Palette.Light.xaml · Palette.Dark.xaml · Palette.HighContrast.xaml** — brushes only, 44 semantic
+  keys, the same keys in all three. Light and Dark are literal values; HighContrast maps every key
+  onto a `SystemColors` *`ColorKey`* through `DynamicResource`, so a change of contrast scheme
+  repaints with nothing for HydraWin to do. Exactly one of these is merged at a time.
+- **Controls.Inputs.xaml · Controls.Menus.xaml · Controls.Panels.xaml** — implicit styles and
+  templates, theme-agnostic, merged permanently, reaching the palette through `DynamicResource`.
+
+The keys are semantic (`ChromeBackgroundBrush`, `ChipWarningForegroundBrush`) rather than named for
+their colour, so a palette change is one edit. The table of them is in
+[reference.md](reference.md#theme-brush-keys).
+
+The control templates exist because WPF's built-in Aero2 theme bakes light gradients into
+`LinearGradientBrush`es, and `CheckBox` in particular draws its box with a native-themed
+`BulletChrome` that no `Setter` can reach. A dark theme therefore has to be a template rather than a
+recolour — and once a control has a template it serves both themes. **A consequence worth knowing:
+the light theme's control chrome changed too.** It is HydraWin's own flat style now, not the
+operating system's. Two templates per control, one per theme, would have been worse.
+
+### Why not the in-box Fluent theme
+
+.NET 10 ships `PresentationFramework.Fluent` and an `Application.ThemeMode` that would have done
+most of this for free. It was rejected on two grounds: it is still `[Experimental]`, so using it
+needs a `WPF0001` suppression and this repository carries no suppressions at all; and it restyles
+everything in WinUI metrics, which loosens the deliberately compact task table. A third-party theme
+library was rejected for the usual reason — the App's only dependencies are the MVVM toolkit and the
+tray icon, and a theme is not worth a third.
+
+### DynamicResource, everywhere
+
+Every brush reference from a view or a template is `{DynamicResource}`. `StaticResource` resolves
+once and bakes the value in, and the main window is constructed once and only ever hidden, so a
+`StaticResource`'d brush would be frozen at the startup theme forever. It is also what makes the
+startup ordering work: `InitializeComponent` runs before the palette is chosen, and the references
+simply re-resolve when it is.
+
+The local-value trap in *WPF traps* below applies with full force here — a `DynamicResource` written
+as an attribute on an element is still a local value and still outranks a style trigger.
+
+### The swap, and why there is no flash
+
+`Themes/ThemeManager.cs` owns the current theme and replaces the palette entry of
+`Application.Resources.MergedDictionaries` **by index assignment**. Clear-then-add would raise two
+invalidations with a window in between where every key resolves to nothing, which is visible as a
+flash of unstyled chrome.
+
+`App.OnStartup` applies the theme between `new MainWindow(...)` and `Show()`. That is the only place
+it can go: the constructor is what reads `state.json`, so the preference is not known before it, and
+WPF creates no window handle and paints nothing until `Show()`, so a palette applied there is the
+one the first frame is drawn with. Reading `state.json` a second time to learn it earlier would be
+two readers of one file, which is how they drift.
+
+### Following the OS while running
+
+`Services/SystemThemeListener.cs` is a near-copy of `ShellHookListener` and hooks `WM_SETTINGCHANGE`
+on the main window, for the same reason: that window is created once and only ever hidden, so the
+subscription survives closing to tray.
+
+Two shapes have to be accepted. An app-theme change carries the string `"ImmersiveColorSet"` in
+`lParam`; a high-contrast change arrives as `SPI_SETHIGHCONTRAST` in `wParam` and carries no such
+string, so matching only the string silently misses every contrast toggle.
+
+Two guards, both needed. Windows raises the notification several times per toggle, and at least one
+can arrive before the registry value has settled — so the listener debounces for 150 ms, and
+`ThemeManager.Reevaluate` does nothing when the answer resolves to the theme already in force.
+Without either, the app strobes.
+
+`SystemEvents.UserPreferenceChanged` would be shorter but lives in the WindowsDesktop-only
+`Microsoft.Win32.SystemEvents.dll`, so Core cannot have it without a package, and using it from the
+App would put an OS query above the Core seam.
+
+### The title bar
+
+`IAppearanceApi.TrySetDarkTitleBar` wraps `DwmSetWindowAttribute` with
+`DWMWA_USE_IMMERSIVE_DARK_MODE`. Only the documented value 20 is sent — the builds that used the
+undocumented 19 are out of support, and the repo rule against undocumented APIs applies.
+
+`ThemeManager.TrackTitleBar` is called from each window's constructor and applies the attribute from
+`SourceInitialized`: the handle exists by then and nothing has been painted, so the caption is right
+on the first frame. It checks `WindowInteropHelper.Handle` and never `EnsureHandle()` — forcing the
+handle into existence early moves a `CenterOwner` dialog to the wrong place.
+
+A live change also calls `RedrawFrame`, which is `SetWindowPos` with `SWP_FRAMECHANGED` and
+everything else suppressed. The compositor often leaves the old caption on screen until the frame is
+invalidated. Windows 11 frequently repaints on its own, which makes this look unnecessary right up
+until the build where it is not.
+
+### Colours that are not in the palette
+
+- **The eight task colours** (`WorkspaceService.DefaultColors`) are user data in `state.json`. All
+  eight read on both grounds; a theme must never rewrite them.
+- **The picker overlay's transparent background** is load-bearing, not cosmetic: WPF strips
+  `WS_EX_LAYERED` from a window whose `AllowsTransparency` is false.
+- **The drag adorners** draw in `OnRender`, which takes a plain `Brush` and `Pen` and so has no
+  `DependencyProperty` to hang a `DynamicResource` on. `Themes/ThemeBrushes.cs` holds frozen copies
+  that `ThemeManager` rebuilds on every apply; the adorners read them in their constructors, and an
+  adorner is created fresh per drag. The picker frame is the one code-drawn colour that *does* have
+  a property, so it uses `SetResourceReference`.
+
+### What stays light, and why
+
+- **The delete-task confirmation** is a `MessageBox`, drawn by user32. It cannot be themed.
+  Replacing it with an in-app dialog is the only fix and was out of scope.
+- **The tray balloon** is drawn by the shell, which already follows the OS theme — the right answer,
+  and one more reason not to ship a dark tray icon.
+- **The tray icon** needs no dark variant. Its plate is already dark with bright shapes, so it reads
+  on either taskbar; and a variant would have to key off `SystemUsesLightTheme`, not
+  `AppsUseLightTheme`, because those are independent settings users routinely mix.
+
 ## Crash handling and the log
 
 `DispatcherUnhandledException` and `AppDomain.UnhandledException` both log the exception with its
@@ -242,3 +366,25 @@ Worth knowing before touching the XAML.
 - **A generated property setter fires its change hook immediately**, including during the
   constructor that is still assigning the other fields. Both rule view models set a `ready` flag
   last and refuse to refresh before it.
+- **An implicit style matches the element's exact type and never a base class.** A
+  `Style TargetType="Window"` reaches none of the three windows, because all three are derived
+  classes — so they set `Background` and `Foreground` themselves. `HotkeyBox` derives from `TextBox`
+  and needs its own three-line style with `BasedOn="{StaticResource {x:Type TextBox}}"`, or it
+  renders in the stock light look in the middle of a dark dialog.
+- **A `ContextMenu` breaks the parent walk but not the resource fallback.** A `RelativeSource`
+  binding to the `Window` fails from inside one, because bindings walk the tree; an implicit style
+  in `Application.Resources` still reaches it, because resource lookup falls back to the application
+  when the chain runs out. That is what themes the code-built tray menu. It also means every theme
+  resource has to live in `Application.Resources` and never in `Window.Resources`.
+- **`MenuItem` picks its template by `Role`, and a context menu uses two of them.** Ordinary items
+  are `SubmenuItem`; one that opens a submenu — *Move to*, *Assign to* — is `SubmenuHeader`. Styling
+  only the first leaves exactly those items unthemed.
+- **Menu separators are re-keyed.** Inside a menu they take
+  `{x:Static MenuItem.SeparatorStyleKey}`, not the plain `Separator` style.
+- **`TextBox` needs `CaretBrush` set explicitly.** It defaults to black, and a black caret on a dark
+  field is simply absent. `PART_ContentHost` in the template is contractual — omit it and the
+  control throws at load, which is at least the loud kind of failure.
+- **`DisplayMemberPath` does not populate `SelectionBoxItemTemplate`**, so a hand-written `ComboBox`
+  template shows the item's `ToString()` when closed. Use an explicit `ItemTemplate`.
+- **`ResizeMode="CanResizeWithGrip"` draws a grip from WPF's own window template**, in light
+  diagonal dots that no style reaches. Both dialogs use `CanResize` instead.

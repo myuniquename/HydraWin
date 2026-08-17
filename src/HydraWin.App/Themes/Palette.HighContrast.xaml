@@ -1,0 +1,136 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        The high-contrast palette: the same keys as the other two, but every value deferred to the
+        user's Windows contrast scheme instead of chosen here.
+
+        Why this file exists rather than "pick whichever of light/dark is closer": a contrast scheme
+        is an accessibility setting with specific colours the user relies on, and a palette that only
+        approximates its ground while keeping HydraWin's own greys for text defeats the point. This
+        file has no opinions — it maps our vocabulary onto theirs.
+
+        Nothing is frozen and every Color is a DynamicResource onto a SystemColors *ColorKey, so
+        switching between contrast schemes (Desert, Aquatic, Night sky) repaints without HydraWin
+        doing anything. That is also why these brushes are not po:Freeze'd: a frozen brush cannot
+        take a new colour.
+
+        Consequence worth knowing: the accent disappears here. Under a contrast scheme the active
+        task is marked by the highlight colour rather than by blue, and the badge is the highlight
+        too. That is correct — a scheme that reduced everything to two colours did so on purpose.
+    -->
+
+    <!-- ============================================================ grounds and text -->
+
+    <SolidColorBrush x:Key="WindowBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" />
+    <SolidColorBrush x:Key="ChromeBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+    <SolidColorBrush x:Key="HairlineBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ActiveBorderColorKey}}" />
+
+    <!-- All three text levels collapse to one: a contrast scheme has no room for hierarchy. -->
+    <SolidColorBrush x:Key="TextPrimaryBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+    <SolidColorBrush x:Key="TextTertiaryBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+
+    <!-- ============================================================ task rows and status -->
+
+    <SolidColorBrush x:Key="AccentBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="ActiveTaskBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+
+    <SolidColorBrush x:Key="NotificationBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="TextOnAccentBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}" />
+
+    <SolidColorBrush x:Key="ChipNeutralBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+    <SolidColorBrush x:Key="ChipNeutralForegroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}" />
+    <SolidColorBrush x:Key="ChipWarningBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+    <SolidColorBrush x:Key="ChipWarningForegroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}" />
+
+    <SolidColorBrush x:Key="IconPlaceholderBrush"
+                     Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}" />
+
+    <SolidColorBrush x:Key="ErrorTextBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+
+    <!-- ============================================================ drag and pick -->
+
+    <SolidColorBrush x:Key="DropTargetFillBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"
+                     Opacity="0.25" />
+    <SolidColorBrush x:Key="DropTargetEdgeBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="InsertionLineBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+
+    <!-- ============================================================ control chrome -->
+
+    <SolidColorBrush x:Key="ControlBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+    <SolidColorBrush x:Key="ControlBorderBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}" />
+    <SolidColorBrush x:Key="ControlHoverBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="ControlHoverBorderBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="ControlPressedBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="ControlDisabledBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+    <SolidColorBrush x:Key="ControlDisabledBorderBrush"
+                     Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}" />
+    <SolidColorBrush x:Key="TextDisabledBrush"
+                     Color="{DynamicResource {x:Static SystemColors.GrayTextColorKey}}" />
+
+    <SolidColorBrush x:Key="FieldBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" />
+    <SolidColorBrush x:Key="FieldBorderBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+    <SolidColorBrush x:Key="CaretBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}" />
+    <SolidColorBrush x:Key="SelectionBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+
+    <SolidColorBrush x:Key="CheckGlyphBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}" />
+
+    <SolidColorBrush x:Key="ScrollBarThumbBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}" />
+    <SolidColorBrush x:Key="ScrollBarThumbHoverBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="ScrollBarThumbPressedBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+
+    <SolidColorBrush x:Key="MenuBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.MenuColorKey}}" />
+    <SolidColorBrush x:Key="MenuBorderBrush"
+                     Color="{DynamicResource {x:Static SystemColors.MenuTextColorKey}}" />
+    <SolidColorBrush x:Key="MenuItemHoverBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.MenuHighlightColorKey}}" />
+    <SolidColorBrush x:Key="MenuSeparatorBrush"
+                     Color="{DynamicResource {x:Static SystemColors.MenuTextColorKey}}" />
+
+    <SolidColorBrush x:Key="TooltipBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.InfoColorKey}}" />
+    <SolidColorBrush x:Key="TooltipBorderBrush"
+                     Color="{DynamicResource {x:Static SystemColors.InfoTextColorKey}}" />
+
+    <SolidColorBrush x:Key="TabStripBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}" />
+    <SolidColorBrush x:Key="TabItemHoverBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}" />
+    <SolidColorBrush x:Key="TabItemSelectedBackgroundBrush"
+                     Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}" />
+
+</ResourceDictionary>

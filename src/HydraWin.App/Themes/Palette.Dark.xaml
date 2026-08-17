@@ -1,0 +1,92 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options">
+
+    <!--
+        The dark palette. Same keys as Palette.Light.xaml, in the same order, with the same section
+        headings — read them side by side. Comments that belong to the key rather than to the value
+        live in the light file only; the reasoning that is specific to dark is here.
+
+        Contrast against the #1B2027 ground, measured rather than guessed:
+          TextPrimaryBrush   #E8EBEF  13.7:1
+          TextSecondaryBrush #A8B0BA   7.5:1
+          TextTertiaryBrush  #7F8894   4.6:1
+          AccentBrush        #4C8DFF   5.2:1
+          ErrorTextBrush     #FF7B8A   6.6:1   (the light #C4314B would have been 3.1:1 — it fails)
+    -->
+
+    <!-- ============================================================ grounds and text -->
+
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#1B2027" po:Freeze="True" />
+    <SolidColorBrush x:Key="ChromeBackgroundBrush" Color="#22282F" po:Freeze="True" />
+    <SolidColorBrush x:Key="HairlineBrush" Color="#333A44" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E8EBEF" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A8B0BA" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#7F8894" po:Freeze="True" />
+
+    <!-- ============================================================ task rows and status -->
+
+    <!-- Invariant with light: the accent is better on dark than on white, not worse. -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#4C8DFF" po:Freeze="True" />
+
+    <!-- The light #F2F7FF read as "a hint of the accent". This is the same idea, inverted. -->
+    <SolidColorBrush x:Key="ActiveTaskBackgroundBrush" Color="#1E2A3D" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="NotificationBrush" Color="#E5484D" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="ChipNeutralBackgroundBrush" Color="#2D3440" po:Freeze="True" />
+    <SolidColorBrush x:Key="ChipNeutralForegroundBrush" Color="#C2CAD4" po:Freeze="True" />
+    <SolidColorBrush x:Key="ChipWarningBackgroundBrush" Color="#4A3620" po:Freeze="True" />
+    <SolidColorBrush x:Key="ChipWarningForegroundBrush" Color="#FFC98A" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="IconPlaceholderBrush" Color="#6B7480" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="ErrorTextBrush" Color="#FF7B8A" po:Freeze="True" />
+
+    <!-- ============================================================ drag and pick -->
+
+    <!-- A touch more alpha than light's #28: the same wash has less to work with over a dark row. -->
+    <SolidColorBrush x:Key="DropTargetFillBrush" Color="#384C8DFF" po:Freeze="True" />
+    <SolidColorBrush x:Key="DropTargetEdgeBrush" Color="#4C8DFF" po:Freeze="True" />
+    <SolidColorBrush x:Key="InsertionLineBrush" Color="#4C8DFF" po:Freeze="True" />
+
+    <!-- ============================================================ control chrome -->
+
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#2A313C" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlBorderBrush" Color="#3D4552" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlHoverBackgroundBrush" Color="#333B48" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlHoverBorderBrush" Color="#4A5462" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlPressedBackgroundBrush" Color="#3E4756" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlDisabledBackgroundBrush" Color="#232931" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlDisabledBorderBrush" Color="#2E353F" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#5C646F" po:Freeze="True" />
+
+    <!-- Recessed rather than raised: a field darker than its surroundings reads as an input. -->
+    <SolidColorBrush x:Key="FieldBackgroundBrush" Color="#161B21" po:Freeze="True" />
+    <SolidColorBrush x:Key="FieldBorderBrush" Color="#3D4552" po:Freeze="True" />
+    <SolidColorBrush x:Key="CaretBrush" Color="#E8EBEF" po:Freeze="True" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#4C8DFF" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="CheckGlyphBrush" Color="#FFFFFF" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="ScrollBarThumbBrush" Color="#4A5361" po:Freeze="True" />
+    <SolidColorBrush x:Key="ScrollBarThumbHoverBrush" Color="#5A6472" po:Freeze="True" />
+    <SolidColorBrush x:Key="ScrollBarThumbPressedBrush" Color="#6B7480" po:Freeze="True" />
+
+    <!-- A shade above the window, so a popup reads as floating rather than as a hole. -->
+    <SolidColorBrush x:Key="MenuBackgroundBrush" Color="#262C35" po:Freeze="True" />
+    <SolidColorBrush x:Key="MenuBorderBrush" Color="#3A424E" po:Freeze="True" />
+    <SolidColorBrush x:Key="MenuItemHoverBackgroundBrush" Color="#333C4A" po:Freeze="True" />
+    <SolidColorBrush x:Key="MenuSeparatorBrush" Color="#3A424E" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="TooltipBackgroundBrush" Color="#2A313C" po:Freeze="True" />
+    <SolidColorBrush x:Key="TooltipBorderBrush" Color="#3D4552" po:Freeze="True" />
+
+    <!-- The selected tab is the window ground, so its content reads as continuous with it. -->
+    <SolidColorBrush x:Key="TabStripBackgroundBrush" Color="#22282F" po:Freeze="True" />
+    <SolidColorBrush x:Key="TabItemHoverBackgroundBrush" Color="#2C333D" po:Freeze="True" />
+    <SolidColorBrush x:Key="TabItemSelectedBackgroundBrush" Color="#1B2027" po:Freeze="True" />
+
+</ResourceDictionary>

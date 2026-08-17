@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using HydraWin.App.Services;
+using HydraWin.App.Themes;
 using HydraWin.Core.Diagnostics;
 using HydraWin.Core.Interop;
 using HydraWin.Core.Recovery;
@@ -19,6 +20,8 @@ public partial class App : Application
     private TrayIcon? tray;
     private HotkeyService? hotkeys;
     private ShellHookListener? shellHook;
+    private ThemeManager? theme;
+    private SystemThemeListener? themeListener;
     private MainWindow? window;
     private bool forceRestoreOnExit;
 
@@ -58,8 +61,17 @@ public partial class App : Application
 
         SessionEnding += OnSessionEnding;
 
-        window = new MainWindow(journal, restoreService);
+        theme = new ThemeManager(Win32AppearanceApi.Instance);
+
+        window = new MainWindow(journal, restoreService, theme);
         MainWindow = window;
+
+        // Between the constructor and Show() is the only place this can go. The constructor is what
+        // reads state.json, so the stored preference is not known before it; and WPF creates no
+        // window handle and paints nothing until Show(), so applying the palette here means the
+        // first frame is already in the right theme. Reading state.json twice to learn it earlier
+        // would be two readers of one file, which is how they drift.
+        theme.Apply(window.ViewModel.Appearance);
 
         if (recovered.Restored > 0 || recovered.Stale > 0)
         {
@@ -67,6 +79,8 @@ public partial class App : Application
         }
 
         window.Show();
+
+        StartThemeListener();
 
         singleInstance.ListenForShowRequests(
             () => Dispatcher.BeginInvoke(() => window?.ShowFromTray()));
@@ -76,6 +90,7 @@ public partial class App : Application
         StartShellHook();
 
         window.ViewModel.HotkeysChanged += (_, _) => RestartHotkeys();
+        window.ViewModel.AppearanceChanged += (_, _) => theme.Apply(window.ViewModel.Appearance);
 
         AppLog.Default.Write($"HydraWin started (recovered {recovered.Restored} window(s)).");
     }
@@ -157,6 +172,31 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// Starts following the Windows theme, so a change out there reaches HydraWin without a restart.
+    /// </summary>
+    /// <remarks>
+    /// Hooked to the main window for the same reason the shell hook is: it is created once and only
+    /// ever hidden, so the subscription survives closing to tray.
+    /// </remarks>
+    private void StartThemeListener()
+    {
+        if (window is null || theme is null)
+        {
+            return;
+        }
+
+        themeListener = new SystemThemeListener(
+            window,
+            Win32AppearanceApi.Instance,
+            theme.Reevaluate);
+
+        if (!themeListener.IsListening)
+        {
+            window.ViewModel.Note("Could not watch the Windows theme — it will not follow changes.");
+        }
+    }
+
+    /// <summary>
     /// Subscribes to the shell's flash notifications — the channel that works for any application
     /// without a rule or a per-app regex.
     /// </summary>
@@ -198,6 +238,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        themeListener?.Dispose();
         shellHook?.Dispose();
         hotkeys?.Dispose();
         tray?.Dispose();

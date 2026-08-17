@@ -11,6 +11,8 @@
         Icon="pack://application:,,,/Assets/hydrawin.ico"
         MinHeight="300" MinWidth="640"
         Topmost="{Binding AlwaysOnTop}"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
         AllowDrop="True" PreviewDragOver="OnWindowDragOver"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
 
@@ -57,39 +59,51 @@
                     <!-- The app icon, over a generic dot for processes that have none. -->
                     <Grid Grid.Column="0" Width="16" Height="16" VerticalAlignment="Center"
                           Margin="0,0,6,0">
-                        <Ellipse Width="8" Height="8" Fill="#9AA5B1" />
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{DynamicResource IconPlaceholderBrush}" />
                         <Image Source="{Binding Icon}" />
                     </Grid>
 
                     <!-- The live Claude Code marker; animates for free as title events arrive. -->
                     <TextBlock Grid.Column="1" Text="{Binding ActivityGlyph}" FontSize="12"
-                               Margin="0,0,4,0" VerticalAlignment="Center" Foreground="#4C8DFF"
+                               Margin="0,0,4,0" VerticalAlignment="Center"
+                               Foreground="{DynamicResource AccentBrush}"
                                Visibility="{Binding ActivityGlyph,
                                                     Converter={StaticResource StringToVisibility}}" />
 
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                         <TextBlock Text="{Binding DisplayTitle}" TextTrimming="CharacterEllipsis"
                                    ToolTip="{Binding Title}" />
-                        <TextBlock Text="{Binding ProcessName}" Opacity="0.55" FontSize="10" />
+
+                        <!-- An explicit brush, not Opacity. Opacity composites towards whatever is
+                             behind it, so the same value that reads as grey on white crushes to
+                             near-invisible on a dark ground. -->
+                        <TextBlock Text="{Binding ProcessName}" FontSize="10"
+                                   Foreground="{DynamicResource TextTertiaryBrush}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                         <!-- Waiting for attention: the dot clears when the window is focused. -->
-                        <Ellipse Width="8" Height="8" Fill="#E5484D" Margin="4,0,0,0"
+                        <Ellipse Width="8" Height="8" Margin="4,0,0,0"
+                                 Fill="{DynamicResource NotificationBrush}"
                                  VerticalAlignment="Center"
                                  ToolTip="{Binding NotificationLabel}"
                                  Visibility="{Binding NotificationLabel,
                                                       Converter={StaticResource StringToVisibility}}" />
-                        <Border Background="#E6E9EC" CornerRadius="2" Padding="4,0" Margin="4,0,0,0"
+                        <Border CornerRadius="2" Padding="4,0" Margin="4,0,0,0"
+                                Background="{DynamicResource ChipNeutralBackgroundBrush}"
                                 Visibility="{Binding IsHydraWinHidden,
                                                      Converter={StaticResource BoolToVisibility}}">
-                            <TextBlock Text="hidden" FontSize="10" Opacity="0.7" />
+                            <TextBlock Text="hidden" FontSize="10"
+                                       Foreground="{DynamicResource ChipNeutralForegroundBrush}" />
                         </Border>
-                        <Border Background="#FFE2C2" CornerRadius="2" Padding="4,0" Margin="4,0,0,0"
+                        <Border CornerRadius="2" Padding="4,0" Margin="4,0,0,0"
+                                Background="{DynamicResource ChipWarningBackgroundBrush}"
                                 ToolTip="Windows refused to hide this one, so it stays on screen through every switch. Usually a protected process, or one that became elevated after HydraWin first saw it."
                                 Visibility="{Binding IsUnmanageable,
                                                      Converter={StaticResource BoolToVisibility}}">
-                            <TextBlock Text="won't hide" FontSize="10" Opacity="0.8" />
+                            <TextBlock Text="won't hide" FontSize="10"
+                                       Foreground="{DynamicResource ChipWarningForegroundBrush}" />
                         </Border>
                     </StackPanel>
                 </Grid>
@@ -108,12 +122,14 @@
                     <Style TargetType="Border">
                         <Setter Property="BorderThickness" Value="1" />
                         <Setter Property="Background" Value="Transparent" />
-                        <Setter Property="BorderBrush" Value="#E1E5EA" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource HairlineBrush}" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                <Setter Property="BorderBrush" Value="#4C8DFF" />
+                                <Setter Property="BorderBrush"
+                                        Value="{DynamicResource AccentBrush}" />
                                 <Setter Property="BorderThickness" Value="2" />
-                                <Setter Property="Background" Value="#F2F7FF" />
+                                <Setter Property="Background"
+                                        Value="{DynamicResource ActiveTaskBackgroundBrush}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -184,20 +200,23 @@
 
                         <!-- In-progress rollup: visible even when the task is collapsed (§ F). -->
                         <TextBlock Grid.Column="3" Text="{Binding ActivityGlyph}" FontSize="13"
-                                   Foreground="#4C8DFF" VerticalAlignment="Center" Margin="6,0"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Center" Margin="6,0"
                                    ToolTip="A session in this task is working"
                                    Visibility="{Binding ActivityGlyph,
                                                         Converter={StaticResource StringToVisibility}}" />
 
                         <!-- Clicking the badge jumps to the newest waiting window, so it handles
                              its own press rather than falling through to the row's switch. -->
-                        <Border Grid.Column="4" Tag="Badge" Background="#E5484D" CornerRadius="8"
+                        <Border Grid.Column="4" Tag="Badge" CornerRadius="8"
+                                Background="{DynamicResource NotificationBrush}"
                                 MinWidth="16" Height="16" Margin="0,0,6,0" Cursor="Hand"
                                 ToolTip="{Binding NotificationTooltip}"
                                 PreviewMouseLeftButtonDown="OnBadgeClick"
                                 Visibility="{Binding NotificationCount,
                                                      Converter={StaticResource CountToVisibility}}">
-                            <TextBlock Text="{Binding NotificationCount}" Foreground="White"
+                            <TextBlock Text="{Binding NotificationCount}"
+                                       Foreground="{DynamicResource TextOnAccentBrush}"
                                        FontSize="10" FontWeight="Bold" Margin="4,0"
                                        HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <!-- Centering aligns the text *box*, and Segoe UI reserves more
@@ -212,8 +231,8 @@
                             </TextBlock>
                         </Border>
 
-                        <TextBlock Grid.Column="5" VerticalAlignment="Center" Opacity="0.55"
-                                   FontSize="11"
+                        <TextBlock Grid.Column="5" VerticalAlignment="Center" FontSize="11"
+                                   Foreground="{DynamicResource TextTertiaryBrush}"
                                    Text="{Binding WindowCount, StringFormat={}{0} win}" />
 
                         <!-- The Spy++ target. Tagged so the row's own mouse handling leaves it
@@ -223,10 +242,14 @@
                                 PreviewMouseLeftButtonDown="OnPickerMouseDown"
                                 ToolTip="Drag this onto any window on screen to put it in this task">
                             <Grid Width="18" Height="18">
-                                <Ellipse Width="16" Height="16" Stroke="#4C8DFF" StrokeThickness="2" />
-                                <Line X1="9" Y1="0" X2="9" Y2="18" Stroke="#4C8DFF" StrokeThickness="2" />
-                                <Line X1="0" Y1="9" X2="18" Y2="9" Stroke="#4C8DFF" StrokeThickness="2" />
-                                <Ellipse Width="4" Height="4" Fill="#4C8DFF"
+                                <Ellipse Width="16" Height="16" StrokeThickness="2"
+                                         Stroke="{DynamicResource AccentBrush}" />
+                                <Line X1="9" Y1="0" X2="9" Y2="18" StrokeThickness="2"
+                                      Stroke="{DynamicResource AccentBrush}" />
+                                <Line X1="0" Y1="9" X2="18" Y2="9" StrokeThickness="2"
+                                      Stroke="{DynamicResource AccentBrush}" />
+                                <Ellipse Width="4" Height="4"
+                                         Fill="{DynamicResource AccentBrush}"
                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
@@ -243,8 +266,9 @@
     </Window.Resources>
 
     <DockPanel x:Name="RootPanel">
-        <Border DockPanel.Dock="Top" Padding="8,6" Background="#F7F8FA"
-                BorderBrush="#E1E5EA" BorderThickness="0,0,0,1">
+        <Border DockPanel.Dock="Top" Padding="8,6"
+                Background="{DynamicResource ChromeBackgroundBrush}"
+                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal">
                 <Button Content="+ New task" Command="{Binding CreateTaskCommand}" Padding="10,3" />
                 <Button Content="Show all" Command="{Binding ShowAllCommand}" Padding="10,3"
@@ -259,9 +283,11 @@
             </StackPanel>
         </Border>
 
-        <Border DockPanel.Dock="Bottom" Padding="8,5" Background="#F7F8FA"
-                BorderBrush="#E1E5EA" BorderThickness="0,1,0,0">
-            <TextBlock Text="{Binding Status}" Opacity="0.8" TextTrimming="CharacterEllipsis" />
+        <Border DockPanel.Dock="Bottom" Padding="8,5"
+                Background="{DynamicResource ChromeBackgroundBrush}"
+                BorderBrush="{DynamicResource HairlineBrush}" BorderThickness="0,1,0,0">
+            <TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
         </Border>
 
         <Grid Margin="8">
@@ -273,7 +299,7 @@
 
             <DockPanel Grid.Column="0">
                 <TextBlock DockPanel.Dock="Top" Text="TASKS" FontSize="10" FontWeight="Bold"
-                           Opacity="0.5" Margin="2,0,0,6" />
+                           Foreground="{DynamicResource TextTertiaryBrush}" Margin="2,0,0,6" />
 
                 <!-- The whole pane is the drop surface, so a task dragged past the last row still
                      lands somewhere sensible. -->
@@ -286,7 +312,8 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <Grid>
-                            <TextBlock Opacity="0.45" Margin="4,12" TextWrapping="Wrap"
+                            <TextBlock Margin="4,12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextTertiaryBrush}"
                                        Text="No tasks yet. Press “+ New task”, then drag windows in from the right.">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
@@ -312,9 +339,11 @@
 
             <DockPanel Grid.Column="2">
                 <TextBlock DockPanel.Dock="Top" Text="UNASSIGNED WINDOWS" FontSize="10"
-                           FontWeight="Bold" Opacity="0.5" Margin="2,0,0,6" />
-                <TextBlock DockPanel.Dock="Bottom" Margin="2,6,0,0" FontSize="10" Opacity="0.45"
+                           FontWeight="Bold" Margin="2,0,0,6"
+                           Foreground="{DynamicResource TextTertiaryBrush}" />
+                <TextBlock DockPanel.Dock="Bottom" Margin="2,6,0,0" FontSize="10"
                            TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextTertiaryBrush}"
                            Text="These stay visible in every task. Drag one onto a task row to assign it." />
 
                 <Border x:Name="UnassignedPane" Background="Transparent" AllowDrop="True"

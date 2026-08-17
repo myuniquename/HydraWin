@@ -63,4 +63,16 @@ public sealed class SettingsModel
     /// product, and toasts are noise until asked for.
     /// </summary>
     public bool NotificationToasts { get; set; }
+
+    /// <summary>
+    /// Which palette to paint with. Default <see cref="Workspaces.Appearance.System"/>: a companion
+    /// window that does not match the desktop it sits on looks broken, and following the OS is the
+    /// only default that is right without being asked.
+    /// </summary>
+    /// <remarks>
+    /// The first setting here that is not a <see cref="bool"/>. It serializes as a name, so the
+    /// hand-editable promise above still holds; <see cref="AppearanceResolver"/> treats anything it
+    /// does not recognise as <see cref="Workspaces.Appearance.System"/>.
+    /// </remarks>
+    public Appearance Appearance { get; set; } = Appearance.System;
 }

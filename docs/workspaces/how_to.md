@@ -77,8 +77,14 @@ names and string enums. Close HydraWin first — it is the only writer, and it s
 so a running instance will overwrite you.
 
 Useful edits: renaming a task, reordering by changing `Order` (renumber from 1 — the
-`Ctrl+Alt+1..9` hotkeys address tasks by it), widening a `TitlePattern`, or clearing `Hotkeys` and
-`NotificationRules` to `[]` so the shipped defaults are seeded again on next launch.
+`Ctrl+Alt+1..9` hotkeys address tasks by it), widening a `TitlePattern`, switching `Appearance`
+between `"System"`, `"Light"` and `"Dark"`, or clearing `Hotkeys` and `NotificationRules` to `[]` so
+the shipped defaults are seeded again on next launch.
+
+**Enum values are the sharp edge.** `Appearance`, `Hotkeys[].Action` and a rule's `Kind` are written
+by name, and a name the reader does not recognise costs the **whole file**, not that one value — the
+document fails to parse and is quarantined. If you are unsure of a spelling, delete the property
+instead; every one of them has a default.
 
 **Verify:** start HydraWin and check the task list. If the file could not be parsed the app starts
 with defaults, preserves your file byte-for-byte as `state.json.corrupt-<timestamp>` beside it, and

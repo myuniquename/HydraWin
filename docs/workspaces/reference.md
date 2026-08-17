@@ -73,7 +73,8 @@ and then silently discard anything edited in the copy.
     { "Action": "SwitchToTask", "TaskOrder": 1, "Modifiers": "Control+Alt", "Key": "1" }
   ],
   "NotificationRules": [ ],
-  "NotificationToasts": false
+  "NotificationToasts": false,
+  "Appearance": "System"
 }
 ```
 
@@ -85,9 +86,16 @@ and then silently discard anything edited in the copy.
 | `Hotkeys` | seeded | See below |
 | `NotificationRules` | one, disabled | See [../notifications/reference.md](../notifications/reference.md) |
 | `NotificationToasts` | `false` | Whether a badge also raises a tray balloon |
+| `Appearance` | `"System"` | Which palette to paint with: `"System"`, `"Light"` or `"Dark"`. See [../ui/reference.md](../ui/reference.md#appearance) |
 
 An empty `Hotkeys` or `NotificationRules` list is re-seeded with the shipped defaults on the next
 launch, which is the supported way to get them back after editing.
+
+`Appearance` is the only setting here that is not a `bool` or a list, and the **only enum-valued
+scalar in the whole file**. Like every enum HydraWin persists it is written by name, and — like
+`Hotkeys[].Action` — a name the deserializer does not recognise is not a tolerated typo: it throws,
+which quarantines the file to `state.json.corrupt-<stamp>` and starts from defaults. Removing the
+property entirely is the safe hand-edit; that reads as `"System"`.
 
 ## Hotkeys
 

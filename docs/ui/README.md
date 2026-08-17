@@ -10,9 +10,9 @@ and its process lifecycle.
 
 | Doc | Read it for |
 | --- | --- |
-| [architecture.md](architecture.md) | The layering rule, drag-and-drop, the picker gesture, focus policy, tray and single instance, the hotkey thread, crash handling |
-| [how_to.md](how_to.md) | Adding a window to a task, rebinding a hotkey, reading the log, adding a setting |
-| [reference.md](reference.md) | Drag payloads and row tags, dialogs, log format and location, keyboard behaviour |
+| [architecture.md](architecture.md) | The layering rule, drag-and-drop, the picker gesture, focus policy, tray and single instance, the hotkey thread, theming, crash handling |
+| [how_to.md](how_to.md) | Adding a window to a task, rebinding a hotkey, reading the log, adding a setting, changing the theme |
+| [reference.md](reference.md) | Drag payloads and row tags, dialogs, appearance and brush keys, log format and location, keyboard behaviour |
 
 Related: [../workspaces/README.md](../workspaces/README.md) for what a switch actually does ·
 [../notifications/README.md](../notifications/README.md) for what puts a badge on a row.
@@ -27,6 +27,10 @@ it; dragging a task row reorders it.
 Around that: a tray icon that survives the window being closed, global hotkeys that work when the
 UI does not, a settings dialog, a per-assignment rule editor, and a crash handler whose job is to
 get the user's windows back before the process dies.
+
+The whole shell paints light or dark, following the Windows app theme by default and reacting to a
+change of it without a restart, with a Light / Dark override on the settings dialog. A Windows
+high-contrast scheme overrides both.
 
 The layering rule is absolute and is the reason most of the design below looks the way it does:
 **no Win32 above Core.** Views bind, view models orchestrate, and every P/Invoke lives in
@@ -67,6 +71,9 @@ going into the App.
 | Purpose | File |
 | --- | --- |
 | The window, its templates and its mouse handling | `src/HydraWin.App/MainWindow.xaml`, `MainWindow.xaml.cs` |
+| Light, dark and high-contrast palettes | `src/HydraWin.App/Themes/Palette.*.xaml` |
+| Every control style and template | `src/HydraWin.App/Themes/Controls.*.xaml` |
+| Resolving and applying the theme | `src/HydraWin.App/Themes/ThemeManager.cs`, `ThemeBrushes.cs`, `Services/SystemThemeListener.cs` |
 | Rows, commands, and the bridge to Core | `src/HydraWin.App/ViewModels/MainViewModel.cs` |
 | One task row / one window row | `src/HydraWin.App/ViewModels/TaskViewModel.cs`, `WindowViewModel.cs` |
 | Drag payloads, hit-testing, ghost and drop adorners | `src/HydraWin.App/DragDropSupport.cs` |

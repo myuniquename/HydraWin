@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using HydraWin.App.Themes;
 using HydraWin.App.ViewModels;
 
 namespace HydraWin.App.Views;
@@ -13,11 +14,13 @@ public partial class SettingsWindow : Window
     private readonly SettingsViewModel settings;
 
     /// <summary>Opens the dialog over the current settings.</summary>
-    public SettingsWindow(MainViewModel main)
+    internal SettingsWindow(MainViewModel main, ThemeManager theme)
     {
         ArgumentNullException.ThrowIfNull(main);
+        ArgumentNullException.ThrowIfNull(theme);
 
         InitializeComponent();
+        theme.TrackTitleBar(this);
 
         settings = new SettingsViewModel(main);
         DataContext = settings;

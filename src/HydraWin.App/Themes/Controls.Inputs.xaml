@@ -1,0 +1,446 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:HydraWin.App.Controls">
+
+    <!--
+        Buttons, fields, boxes and tips. Merged unconditionally and never swapped: everything here
+        is theme-agnostic, and reaches its colours through {DynamicResource} onto the palette keys.
+
+        Why any of this exists at all: WPF's built-in Aero2 templates bake light gradients into
+        LinearGradientBrushes and, for CheckBox, into a native-themed BulletChrome whose colours no
+        Setter can reach. A dark theme therefore has to be a template, not a recolour — and once a
+        control has a template, that template serves both themes. The light theme's control chrome
+        consequently changed too: it is HydraWin's own flat style now rather than the OS's.
+
+        Two rules while editing:
+          - Names like PART_ContentHost are contracts, not labels. TextBoxBase throws at load
+            without it. Grep the control's documented parts before renaming anything.
+          - A local value on an element outranks a style trigger (docs/ui/architecture.md
+            § WPF traps met along the way). Anything a trigger needs to change must not also be set
+            as an attribute on the element in the views.
+    -->
+
+    <!--
+        Defined first because Setters below reference it with StaticResource, and a resource
+        dictionary resolves those in declaration order. The stroke is a DynamicResource, so the
+        focus rectangle follows the theme even though the style itself is looked up once.
+    -->
+    <Style x:Key="FocusVisual">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Rectangle Margin="2" StrokeThickness="1" StrokeDashArray="1 2"
+                               SnapsToDevicePixels="True"
+                               Stroke="{DynamicResource TextSecondaryBrush}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ Button -->
+
+    <Style TargetType="{x:Type Button}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}" />
+        <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <Border x:Name="Chrome" CornerRadius="3"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- Both OK buttons are IsDefault; Aero2 drew a ring there and losing it
+                             would cost the dialogs their "this is the one" affordance. -->
+                        <Trigger Property="IsDefaulted" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource ControlHoverBackgroundBrush}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource ControlHoverBorderBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource ControlPressedBackgroundBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource ControlDisabledBackgroundBrush}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource ControlDisabledBorderBrush}" />
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ TextBox -->
+
+    <Style TargetType="{x:Type TextBox}">
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Background" Value="{DynamicResource FieldBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FieldBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="3,2" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+
+        <!-- CaretBrush is the setter everyone forgets: the caret is black by default, and a black
+             caret on a dark field is simply absent. -->
+        <Setter Property="CaretBrush" Value="{DynamicResource CaretBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
+        <Setter Property="SelectionOpacity" Value="0.4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type TextBox}">
+                    <Border x:Name="Chrome" CornerRadius="3"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <!-- PART_ContentHost is contractual: TextBoxBase looks it up by name and
+                             throws at load if it is missing or is not a ScrollViewer/Decorator. -->
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                      HorizontalScrollBarVisibility="Hidden"
+                                      VerticalScrollBarVisibility="Hidden" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource ControlHoverBorderBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+
+                        <!--
+                            Deliberately nothing on IsReadOnly. Every HotkeyBox in the settings
+                            dialog is read-only by design — it captures a key combination rather
+                            than accepting typing — so greying read-only content would make the
+                            whole Hotkeys tab look disabled.
+                        -->
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource ControlDisabledBackgroundBrush}" />
+                            <Setter TargetName="Chrome" Property="BorderBrush"
+                                    Value="{DynamicResource ControlDisabledBorderBrush}" />
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
+        Mandatory, and the least obvious style in this file. WPF matches an implicit style on the
+        element's *exact* runtime type and never walks up to a base class, so the TextBox style above
+        does not reach HotkeyBox — which derives from TextBox and would otherwise render with the
+        stock Aero2 look, light, in the middle of a dark dialog.
+    -->
+    <Style TargetType="{x:Type controls:HotkeyBox}"
+           BasedOn="{StaticResource {x:Type TextBox}}" />
+
+    <!-- ============================================================ ToggleButton -->
+
+    <!--
+        One instance: the chevron that expands a task row. It sets Background="Transparent" and
+        BorderThickness="0" as *local* values, which beat any setter here — so the hover cue is a
+        separate layer behind the content rather than a Background trigger, which would never fire.
+    -->
+    <Style TargetType="{x:Type ToggleButton}">
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Grid>
+                        <Border x:Name="Hover" CornerRadius="3" Opacity="0"
+                                Background="{DynamicResource ControlHoverBackgroundBrush}" />
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3" SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Hover" Property="Opacity" Value="1" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ CheckBox -->
+
+    <Style TargetType="{x:Type CheckBox}">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}" />
+        <Setter Property="Background" Value="{DynamicResource FieldBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type CheckBox}">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border x:Name="Box" Grid.Column="0" Width="15" Height="15"
+                                CornerRadius="3" VerticalAlignment="Center"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" SnapsToDevicePixels="True">
+                            <Grid>
+                                <!-- Stretch rather than a fixed geometry size, so the tick stays
+                                     centred if the box ever changes. -->
+                                <Path x:Name="Tick" Visibility="Collapsed" Margin="2,3,2,2"
+                                      Stretch="Uniform" StrokeThickness="1.6"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M 0,4 L 3.2,7.2 L 9,1"
+                                      Stroke="{DynamicResource CheckGlyphBrush}" />
+                                <Rectangle x:Name="Indeterminate" Visibility="Collapsed"
+                                           Width="7" Height="7" RadiusX="1" RadiusY="1"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Fill="{DynamicResource CheckGlyphBrush}" />
+                            </Grid>
+                        </Border>
+
+                        <ContentPresenter Grid.Column="1" Margin="7,0,0,0"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          RecognizesAccessKey="True" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Box" Property="Background"
+                                    Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush"
+                                    Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="{x:Null}">
+                            <Setter TargetName="Indeterminate" Property="Visibility"
+                                    Value="Visible" />
+                            <Setter TargetName="Box" Property="Background"
+                                    Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush"
+                                    Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="BorderBrush"
+                                    Value="{DynamicResource ControlHoverBorderBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Box" Property="Background"
+                                    Value="{DynamicResource ControlDisabledBackgroundBrush}" />
+                            <Setter TargetName="Box" Property="BorderBrush"
+                                    Value="{DynamicResource ControlDisabledBorderBrush}" />
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ ComboBox -->
+
+    <!--
+        New for the appearance picker — the settings dialog's first control that is not a check box.
+        Non-editable only: nothing in HydraWin needs a typed combo, so there is no
+        PART_EditableTextBox here and IsEditable="True" would render without a text field.
+    -->
+    <ControlTemplate x:Key="ComboBoxFaceTemplate" TargetType="{x:Type ToggleButton}">
+        <Border x:Name="Chrome" CornerRadius="3"
+                Background="{DynamicResource ControlBackgroundBrush}"
+                BorderBrush="{DynamicResource ControlBorderBrush}"
+                BorderThickness="1" SnapsToDevicePixels="True">
+            <Path x:Name="Arrow" HorizontalAlignment="Right" VerticalAlignment="Center"
+                  Margin="0,0,8,0" Data="M 0,0 L 4,4 L 8,0"
+                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  Stroke="{DynamicResource TextSecondaryBrush}" />
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background"
+                        Value="{DynamicResource ControlHoverBackgroundBrush}" />
+                <Setter TargetName="Chrome" Property="BorderBrush"
+                        Value="{DynamicResource ControlHoverBorderBrush}" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Chrome" Property="BorderBrush"
+                        Value="{DynamicResource AccentBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Chrome" Property="Background"
+                        Value="{DynamicResource ControlDisabledBackgroundBrush}" />
+                <Setter TargetName="Chrome" Property="BorderBrush"
+                        Value="{DynamicResource ControlDisabledBorderBrush}" />
+                <Setter TargetName="Arrow" Property="Stroke"
+                        Value="{DynamicResource TextDisabledBrush}" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style TargetType="{x:Type ComboBoxItem}">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ComboBoxItem}">
+                    <Border x:Name="Chrome" Background="Transparent"
+                            Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Chrome" Property="Background"
+                                    Value="{DynamicResource MenuItemHoverBackgroundBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type ComboBox}">
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Padding" Value="7,3,24,3" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ComboBox}">
+                    <Grid>
+                        <!--
+                            Style="{x:Null}" on purpose: without it the implicit ToggleButton style
+                            above would land on the combo's face and fight this template's own
+                            chrome. The local Template still wins, but its setters would not.
+                        -->
+                        <ToggleButton x:Name="Face" Style="{x:Null}" Focusable="False"
+                                      ClickMode="Press"
+                                      Template="{StaticResource ComboBoxFaceTemplate}"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
+                                                          RelativeSource={RelativeSource TemplatedParent}}" />
+
+                        <ContentPresenter IsHitTestVisible="False"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+
+                        <!-- PART_Popup is contractual: ComboBox finds its drop-down by this name. -->
+                        <Popup x:Name="PART_Popup" Placement="Bottom" Focusable="False"
+                               AllowsTransparency="True" PopupAnimation="Fade"
+                               IsOpen="{TemplateBinding IsDropDownOpen}">
+                            <Border Margin="0,2,0,0" CornerRadius="3" BorderThickness="1"
+                                    MinWidth="{TemplateBinding ActualWidth}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                    Background="{DynamicResource MenuBackgroundBrush}"
+                                    BorderBrush="{DynamicResource MenuBorderBrush}"
+                                    SnapsToDevicePixels="True">
+                                <ScrollViewer Padding="1"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextDisabledBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ ToolTip -->
+
+    <!--
+        Every ToolTip in HydraWin is a bare string; WPF wraps those in a generated ToolTip, so this
+        implicit style does reach them.
+    -->
+    <Style TargetType="{x:Type ToolTip}">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="MaxWidth" Value="360" />
+        <Setter Property="HasDropShadow" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToolTip}">
+                    <Border CornerRadius="3" BorderThickness="1" Padding="7,4"
+                            Background="{DynamicResource TooltipBackgroundBrush}"
+                            BorderBrush="{DynamicResource TooltipBorderBrush}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================================================ Separator -->
+
+    <!-- The plain form. Menu separators need a *keyed* style as well — see Controls.Menus.xaml. -->
+    <Style TargetType="{x:Type Separator}">
+        <Setter Property="Margin" Value="0,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Rectangle Height="1" SnapsToDevicePixels="True"
+                               Fill="{DynamicResource HairlineBrush}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

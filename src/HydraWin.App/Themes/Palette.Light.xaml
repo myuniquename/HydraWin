@@ -1,0 +1,118 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options">
+
+    <!--
+        The light palette — HydraWin as it looked before there was a dark one, so every value here
+        that has a predecessor is that predecessor unchanged.
+
+        Palette.Dark.xaml and Palette.HighContrast.xaml define exactly the same keys. A key added
+        here and forgotten there resolves to nothing in that theme, and an unresolved DynamicResource
+        fails silently: the property keeps its default. Add to all three or to none.
+
+        po:Freeze is safe because a theme change swaps whole dictionaries rather than mutating
+        brushes. Nothing here is animated.
+
+        This is also the dictionary App.xaml declares statically, which is what lets the XAML
+        designer resolve every key. Load both palettes from code instead and MainWindow previews as
+        an empty rectangle, which reads as a bug in the templates rather than a designer artefact.
+    -->
+
+    <!-- ============================================================ grounds and text -->
+
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FFFFFF" po:Freeze="True" />
+
+    <!-- The toolbar and the status bar: a shade off the client area, not a border. -->
+    <SolidColorBrush x:Key="ChromeBackgroundBrush" Color="#F7F8FA" po:Freeze="True" />
+
+    <!-- Every 1px rule in the app: chrome edges, task-row borders, card and preview borders. -->
+    <SolidColorBrush x:Key="HairlineBrush" Color="#E1E5EA" po:Freeze="True" />
+
+    <!--
+        Three levels of text, and the reason Opacity is no longer used for this. Opacity composites
+        towards whatever is behind it, so the same 0.45 that reads as grey on white crushes to
+        near-invisible on a dark ground. These are measured: #6B7280 on white is 4.87:1, and the
+        instinctive #767D86 would have been 4.18:1 — under the bar.
+    -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1A1D21" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5A6169" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="#6B7280" po:Freeze="True" />
+
+    <!-- ============================================================ task rows and status -->
+
+    <!--
+        The accent is theme-invariant, and measurably fine both ways: 3.20:1 on white, 5.19:1 on the
+        dark ground. It is the active-task border, the activity glyph, the crosshair and the drag
+        adorners, so one value across both themes is one less thing to keep in step.
+    -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#4C8DFF" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="ActiveTaskBackgroundBrush" Color="#F2F7FF" po:Freeze="True" />
+
+    <!-- The badge and the waiting-for-attention dot. Invariant: it is meant to shout. -->
+    <SolidColorBrush x:Key="NotificationBrush" Color="#E5484D" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" po:Freeze="True" />
+
+    <!-- The "hidden" and "won't hide" row chips. Load-bearing semantics, not decoration. -->
+    <SolidColorBrush x:Key="ChipNeutralBackgroundBrush" Color="#E6E9EC" po:Freeze="True" />
+    <SolidColorBrush x:Key="ChipNeutralForegroundBrush" Color="#4A5560" po:Freeze="True" />
+    <SolidColorBrush x:Key="ChipWarningBackgroundBrush" Color="#FFE2C2" po:Freeze="True" />
+    <SolidColorBrush x:Key="ChipWarningForegroundBrush" Color="#6A4A18" po:Freeze="True" />
+
+    <!-- The dot behind a window row's icon, for processes that have none. -->
+    <SolidColorBrush x:Key="IconPlaceholderBrush" Color="#9AA5B1" po:Freeze="True" />
+
+    <!-- Validation text in both dialogs. The one literal that had to change for dark. -->
+    <SolidColorBrush x:Key="ErrorTextBrush" Color="#C4314B" po:Freeze="True" />
+
+    <!-- ============================================================ drag and pick -->
+
+    <SolidColorBrush x:Key="DropTargetFillBrush" Color="#284C8DFF" po:Freeze="True" />
+    <SolidColorBrush x:Key="DropTargetEdgeBrush" Color="#4C8DFF" po:Freeze="True" />
+    <SolidColorBrush x:Key="InsertionLineBrush" Color="#4C8DFF" po:Freeze="True" />
+
+    <!-- ============================================================ control chrome -->
+
+    <!--
+        None of these had a predecessor: the controls inherited WPF's Aero2 theme, whose light
+        gradients cannot be reached by a Setter. Replacing them with templates means the light theme
+        now has HydraWin's own flat control chrome rather than the OS's — deliberate, because two
+        templates per control would be worse than one that works in both themes.
+    -->
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#FCFCFD" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlBorderBrush" Color="#C9CFD6" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlHoverBackgroundBrush" Color="#EAF1FB" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlHoverBorderBrush" Color="#A9BEDD" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlPressedBackgroundBrush" Color="#DCE7F7" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlDisabledBackgroundBrush" Color="#F2F3F5" po:Freeze="True" />
+    <SolidColorBrush x:Key="ControlDisabledBorderBrush" Color="#E1E5EA" po:Freeze="True" />
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="#A0A6AE" po:Freeze="True" />
+
+    <!-- Text boxes, including every HotkeyBox. -->
+    <SolidColorBrush x:Key="FieldBackgroundBrush" Color="#FFFFFF" po:Freeze="True" />
+    <SolidColorBrush x:Key="FieldBorderBrush" Color="#C9CFD6" po:Freeze="True" />
+    <SolidColorBrush x:Key="CaretBrush" Color="#1A1D21" po:Freeze="True" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#4C8DFF" po:Freeze="True" />
+
+    <!-- The tick inside a checked box. -->
+    <SolidColorBrush x:Key="CheckGlyphBrush" Color="#FFFFFF" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="ScrollBarThumbBrush" Color="#C4CAD2" po:Freeze="True" />
+    <SolidColorBrush x:Key="ScrollBarThumbHoverBrush" Color="#AAB2BC" po:Freeze="True" />
+    <SolidColorBrush x:Key="ScrollBarThumbPressedBrush" Color="#8F98A4" po:Freeze="True" />
+
+    <!-- The tray menu and both row context menus. -->
+    <SolidColorBrush x:Key="MenuBackgroundBrush" Color="#FFFFFF" po:Freeze="True" />
+    <SolidColorBrush x:Key="MenuBorderBrush" Color="#D4D9DF" po:Freeze="True" />
+    <SolidColorBrush x:Key="MenuItemHoverBackgroundBrush" Color="#EAF1FB" po:Freeze="True" />
+    <SolidColorBrush x:Key="MenuSeparatorBrush" Color="#E1E5EA" po:Freeze="True" />
+
+    <SolidColorBrush x:Key="TooltipBackgroundBrush" Color="#FFFFFF" po:Freeze="True" />
+    <SolidColorBrush x:Key="TooltipBorderBrush" Color="#D4D9DF" po:Freeze="True" />
+
+    <!-- The settings dialog's three tabs. -->
+    <SolidColorBrush x:Key="TabStripBackgroundBrush" Color="#F7F8FA" po:Freeze="True" />
+    <SolidColorBrush x:Key="TabItemHoverBackgroundBrush" Color="#EDF0F4" po:Freeze="True" />
+    <SolidColorBrush x:Key="TabItemSelectedBackgroundBrush" Color="#FFFFFF" po:Freeze="True" />
+
+</ResourceDictionary>

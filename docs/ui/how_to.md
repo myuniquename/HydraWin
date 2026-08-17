@@ -71,6 +71,38 @@ come back, and the log should hold both the stack and the restore line.
   **Exit** honours the restore-on-exit setting, which is the only way to deliberately leave windows
   hidden.
 
+## Change the theme
+
+**Settings… → General → Appearance.** *Follow Windows* is the default and tracks the system app
+theme while HydraWin runs; *Light* and *Dark* pin it whatever Windows is set to.
+
+It applies on **OK**, not on selection — this dialog edits copies and Cancel has to mean nothing
+happened. A Windows high-contrast scheme overrides all three; HydraWin defers to it rather than
+painting over an accessibility setting.
+
+**Verify:** flip Windows between light and dark in Settings → Personalisation → Colours with
+*Follow Windows* selected; HydraWin follows without a restart, title bar included. Then pin the
+opposite theme and confirm an OS flip no longer moves it, and that `"Appearance"` in `state.json`
+reads back as the name you chose.
+
+The delete-task confirmation is a Win32 message box and stays light in every theme. That is known
+and accepted, not a bug to re-report.
+
+## Change a theme colour
+
+Every colour is a named brush in `src/HydraWin.App/Themes/Palette.*.xaml` — the table of keys is in
+[reference.md](reference.md#theme-brush-keys). **Edit all three palettes or none:** they must carry
+identical key sets, and an unresolved `DynamicResource` fails silently by leaving the property at
+its default, so a key added to one file and forgotten in another shows up only in that theme.
+
+For high contrast, map the key onto a `SystemColors` *`ColorKey`* rather than picking a value.
+
+To change a control's *shape* rather than its colour, the templates are in `Themes/Controls.*.xaml`.
+Read § *WPF traps met along the way* in [architecture.md](architecture.md) first — most of it was
+written from this exact work.
+
+**Verify:** the drills below, in both themes.
+
 ## Add a setting
 
 The shape to follow, since every existing setting follows it:
@@ -85,8 +117,45 @@ The shape to follow, since every existing setting follows it:
 Keep it serialising to a flat property name and a string enum: `state.json` is hand-editable and
 that is a documented promise, not an implementation detail.
 
+**`ApplySettings` is at seven parameters, which is Sonar S107's limit.** The next setting has to
+change its shape — a single record of the dialog's result is the obvious move — rather than reach
+for a suppression, which this repository carries none of.
+
+`Appearance` is the only setting that is not a `bool`, and the only one anything reacts to beyond
+storing it: `MainViewModel` raises `AppearanceChanged` and `App` re-applies the palette, mirroring
+how `HotkeysChanged` already works. Swapping application resources is presentation plumbing and does
+not belong in a view model.
+
 **Verify:** toggle it, press Cancel, and confirm `state.json` did not change. Toggle it, press OK,
 and confirm it did — and that it survives a restart.
+
+## Drill the theme by hand
+
+None of the rendering has automated coverage — Core holds no WPF reference — so these are the
+evidence. Run them in both themes and report what was observed.
+
+1. **Cold start, no flash.** Set Windows dark, restart HydraWin. The window is dark on its *first*
+   frame; a one-frame white flash is visible to the eye at 60 Hz and is the specific failure the
+   startup ordering exists to prevent.
+2. **Live OS switch.** With *Follow Windows* selected, flip the system theme. Client area, toolbar,
+   status bar, task rows and **title bar** all follow with no restart, and change **once** — visible
+   strobing means the debounce or the unchanged-guard is broken.
+3. **Close to tray, then switch, then reopen.** Proves the hook is on a window that is only hidden.
+   Right-click the tray icon while it is hidden: the menu is already in the new theme.
+4. **Both dialogs.** Settings… on all three tabs, and a window row's *Edit re-attach rule…*. Check
+   hover, focus and disabled states, a `HotkeyBox` mid-capture, and an invalid regex — the red error
+   text is the one literal that had to change for dark, so read it.
+5. **Menus.** Both row context menus and the tray menu. *Move to* and *Assign to* are
+   `SubmenuHeader`s and are the items most likely to be left light; the separators are the next.
+   *Close to tray* must still show its checkmark.
+6. **Gestures.** Drag a window row onto a task (drop outline and wash), drag a task row to reorder
+   (insertion line), and run the crosshair over another window (accent frame).
+7. **High contrast.** Settings → Accessibility → Contrast themes → *Desert* → Apply. HydraWin
+   repaints in that scheme's own colours without a restart, and returns when it is turned off.
+
+Capture the evidence with `PrintWindow` and `PW_RENDERFULLCONTENT` rather than trusting the eye —
+see the next section. Note that an owned dialog hangs off its **owner** in the UI Automation tree,
+so drive one by finding its real top-level window handle rather than walking the desktop root.
 
 ## Drive the UI from a test
 

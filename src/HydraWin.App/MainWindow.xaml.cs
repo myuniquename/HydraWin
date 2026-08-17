@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Threading;
+using HydraWin.App.Themes;
 using HydraWin.App.ViewModels;
 using HydraWin.Core.Interop;
 using HydraWin.Core.Recovery;
@@ -25,6 +26,9 @@ public partial class MainWindow : Window
     private readonly MainViewModel viewModel;
     private readonly DropIndicator indicator = new();
 
+    /// <summary>Passed on to both dialogs, so their title bars follow the theme too.</summary>
+    private readonly ThemeManager theme;
+
     private Point dragOrigin;
     private object? pressedItem;
     private bool dragging;
@@ -33,9 +37,17 @@ public partial class MainWindow : Window
     private WindowViewModel? menuWindow;
     private TaskViewModel? menuTask;
 
-    public MainWindow(RecoveryJournal journal, RestoreService restoreService)
+    internal MainWindow(RecoveryJournal journal, RestoreService restoreService, ThemeManager theme)
     {
+        ArgumentNullException.ThrowIfNull(theme);
+
         InitializeComponent();
+        this.theme = theme;
+
+        // Subscribes to SourceInitialized; there is no handle yet, and that is the point — the
+        // attribute lands after the handle exists and before the first paint.
+        theme.TrackTitleBar(this);
+
         viewModel = new MainViewModel(journal, restoreService)
         {
             ConfirmDelete = ConfirmDelete,
@@ -577,7 +589,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var editor = new Views.RuleEditorWindow(viewModel, window) { Owner = this };
+        var editor = new Views.RuleEditorWindow(viewModel, window, theme) { Owner = this };
         editor.ShowDialog();
     }
 
@@ -590,7 +602,7 @@ public partial class MainWindow : Window
     internal void ShowSettings()
     {
         // A dialog would sit under an always-on-top main window otherwise.
-        var settings = new Views.SettingsWindow(viewModel) { Owner = this, Topmost = Topmost };
+        var settings = new Views.SettingsWindow(viewModel, theme) { Owner = this, Topmost = Topmost };
         settings.ShowDialog();
     }
 

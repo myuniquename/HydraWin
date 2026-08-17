@@ -97,6 +97,30 @@ public readonly record struct ShowWindowResult(bool Succeeded, int Win32Error);
 /// <param name="CancelRequested">Whether Escape is down — the pick is abandoned.</param>
 public readonly record struct PickerInput(bool ButtonHeld, bool CancelRequested);
 
+/// <summary>
+/// Win32 <c>HIGHCONTRAST</c>, for <c>SPI_GETHIGHCONTRAST</c>. Named pascal-case here because the
+/// analyzer insists, the same way <c>WINDOWPLACEMENT</c> became <see cref="WindowPlacement"/>.
+/// </summary>
+/// <remarks>
+/// <see cref="Size"/> must equal the struct size before the call or Windows rejects it, the same
+/// trap as <see cref="WindowPlacement"/>; the wrapper owns that. <see cref="DefaultScheme"/> is a
+/// buffer pointer HydraWin never supplies, so it stays a raw <see cref="nint"/> — that also keeps
+/// the struct blittable, which is what lets <c>[LibraryImport]</c> take it by reference without
+/// custom marshalling.
+/// </remarks>
+[StructLayout(LayoutKind.Sequential)]
+internal struct HighContrastInfo
+{
+    /// <summary><c>cbSize</c>.</summary>
+    public uint Size;
+
+    /// <summary><c>dwFlags</c>.</summary>
+    public uint Flags;
+
+    /// <summary><c>lpszDefaultScheme</c>; always zero here.</summary>
+    public nint DefaultScheme;
+}
+
 /// <summary>Win32 <c>MSG</c>.</summary>
 [StructLayout(LayoutKind.Sequential)]
 internal struct Msg
@@ -142,6 +166,13 @@ internal static partial class NativeMethods
 
     internal const uint DWMWA_CLOAKED = 14;
 
+    /// <summary>
+    /// <c>DWMWA_USE_IMMERSIVE_DARK_MODE</c>. The value is 20 from Windows 10 20H1 onwards; the
+    /// earlier builds that used 19 are long out of support and HydraWin targets Windows 11, so only
+    /// 20 is sent and a refusal is simply ignored.
+    /// </summary>
+    internal const uint DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
     internal const uint TOKEN_QUERY = 0x0008;
@@ -153,8 +184,10 @@ internal static partial class NativeMethods
     private const long WS_EX_NOACTIVATE = 0x0800_0000L;
 
     private const int SWP_NOSIZE = 0x0001;
+    private const int SWP_NOZORDER = 0x0004;
     private const int SWP_NOMOVE = 0x0002;
     private const int SWP_NOACTIVATE = 0x0010;
+    private const int SWP_FRAMECHANGED = 0x0020;
     private const int SWP_NOOWNERZORDER = 0x0200;
 
     private const nint HWND_TOP = 0;
@@ -181,6 +214,10 @@ internal static partial class NativeMethods
     internal const int SW_SHOWNA = 8;
 
     private const int MaxProcessPathLength = 1024;
+
+    /// <summary><c>SPI_GETHIGHCONTRAST</c>, and the flag in the struct it fills.</summary>
+    private const uint SPI_GETHIGHCONTRAST = 0x0042;
+    private const uint HCF_HIGHCONTRASTON = 0x0001;
 
     /// <summary>
     /// Out-of-context WinEvent callback. The caller <b>must</b> keep its instance alive for the
@@ -250,6 +287,21 @@ internal static partial class NativeMethods
         uint dwAttribute,
         out int pvAttribute,
         int cbAttribute);
+
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmSetWindowAttribute")]
+    private static partial int DwmSetWindowAttributeCore(
+        nint hwnd,
+        uint dwAttribute,
+        in int pvAttribute,
+        int cbAttribute);
+
+    [LibraryImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SystemParametersInfoCore(
+        uint uiAction,
+        uint uiParam,
+        ref HighContrastInfo pvParam,
+        uint fWinIni);
 
     [LibraryImport("kernel32.dll", EntryPoint = "OpenProcess", SetLastError = true)]
     private static partial nint OpenProcessCore(
@@ -942,6 +994,79 @@ internal static partial class NativeMethods
     {
         const uint WM_QUIT = 0x0012;
         PostThreadMessageCore(threadId, WM_QUIT, 0, 0);
+    }
+
+    /// <summary>
+    /// Asks the compositor to draw a window's title bar dark, or light again.
+    /// </summary>
+    /// <remarks>
+    /// Purely cosmetic, so a failure is reported rather than thrown: an unsupported attribute on an
+    /// older build must not stop HydraWin from starting. The attribute applies to the frame the
+    /// compositor draws, which means the window needs a handle first — call it from
+    /// <c>SourceInitialized</c>, not from a constructor.
+    /// </remarks>
+    /// <returns><see langword="false"/> when the compositor refused.</returns>
+    internal static bool TrySetDarkTitleBar(nint hwnd, bool dark)
+    {
+        if (hwnd == 0)
+        {
+            return false;
+        }
+
+        int value = dark ? 1 : 0;
+        return DwmSetWindowAttributeCore(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            in value,
+            sizeof(int)) == 0;
+    }
+
+    /// <summary>Whether a Windows high-contrast theme is active.</summary>
+    internal static bool IsHighContrast()
+    {
+        HighContrastInfo contrast = default;
+        contrast.Size = (uint)Marshal.SizeOf<HighContrastInfo>();
+
+        // A failed query is treated as "not high contrast": the ordinary app-theme preference is
+        // then the better guess, and it is the answer for almost every desktop.
+        return SystemParametersInfoCore(SPI_GETHIGHCONTRAST, contrast.Size, ref contrast, 0)
+            && (contrast.Flags & HCF_HIGHCONTRASTON) != 0;
+    }
+
+    /// <summary>
+    /// Whether a <c>WM_SETTINGCHANGE</c> lParam names the given setting.
+    /// </summary>
+    /// <remarks>
+    /// Not P/Invoke, but a read of native memory the message handed us, which is the same boundary
+    /// and so belongs on the same side of it. A null or unreadable pointer is simply "no".
+    /// </remarks>
+    internal static bool IsSettingName(nint lParam, string name) =>
+        lParam != 0 && string.Equals(Marshal.PtrToStringUni(lParam), name, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Forces a window's non-client area to repaint, without moving, resizing or restacking it.
+    /// </summary>
+    /// <remarks>
+    /// <c>SWP_FRAMECHANGED</c> with everything else suppressed sends <c>WM_NCCALCSIZE</c> and gets
+    /// the frame redrawn with no geometry change. This is the nudge a live
+    /// <see cref="TrySetDarkTitleBar"/> needs: the attribute takes, and the compositor then often
+    /// leaves the old caption on screen until something invalidates it. Windows 11 frequently
+    /// repaints on its own, which makes this look unnecessary right up until the build where it is
+    /// not.
+    /// </remarks>
+    internal static void RedrawFrame(nint hwnd)
+    {
+        if (hwnd != 0)
+        {
+            SetWindowPosCore(
+                hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
     }
 
     /// <summary>Releases every hook in the list and empties it. Zero handles are skipped.</summary>

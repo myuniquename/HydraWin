@@ -47,6 +47,17 @@ placements. Background windows that want attention raise a badge on their task r
   (`U+2733`) when idle — is still parsed, but only to show live progress in the overview. Requires
   `bellStyle` to include `"taskbar"` and Claude Code's `preferredNotifChannel` to be
   `terminal_bell`.
+- **Colours are never literals in a view.** Every brush is a semantic key in
+  `src/HydraWin.App/Themes/Palette.{Light,Dark,HighContrast}.xaml`, reached by `DynamicResource` —
+  `StaticResource` bakes the startup theme in forever, because the main window is constructed once
+  and only ever hidden. The three palettes must carry **identical key sets**: an unresolved
+  `DynamicResource` fails silently by leaving the property at its default, so a key added to one
+  file and forgotten in another is invisible until someone runs that theme. Theme resources also
+  have to live in `Application.Resources` and never in `Window.Resources`, or the context menus and
+  the tray menu miss them. `Opacity` is not a way to make text secondary: it composites towards the
+  background and crushes on dark — use `TextSecondaryBrush` / `TextTertiaryBrush`. The traps that
+  cost the most time are listed in `docs/ui/architecture.md` § *WPF traps met along the way*; read
+  them before touching XAML.
 
 ## Style
 
@@ -80,7 +91,7 @@ placements. Background windows that want attention raise a badge on their task r
 | --- | --- |
 | Window inventory, task model, switching, crash recovery | `docs/workspaces/` |
 | How a hidden window asks for attention, and what it costs | `docs/notifications/` |
-| The shell: rows, gestures, tray, hotkeys, dialogs, lifecycle | `docs/ui/` |
+| The shell: rows, gestures, tray, hotkeys, dialogs, theming, lifecycle | `docs/ui/` |
 
 Each folder has the same four files: `README.md` is the hub, `architecture.md` explains how it
 works and why, `how_to.md` holds recipes, `reference.md` holds schemas and surfaces. Start at the
