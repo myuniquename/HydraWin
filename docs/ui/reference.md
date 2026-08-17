@@ -2,6 +2,9 @@
 
 ## Main window
 
+![Three task rows: colour chip, expander, name, activity marker, notification badge, window count
+and crosshair, with the window rows beneath each](../images/task-rows.png)
+
 | Element | Behaviour |
 | --- | --- |
 | Task row, clicked | Switches to that task; HydraWin keeps the keyboard |
@@ -20,6 +23,9 @@
 Row chips: **hidden** while HydraWin is the reason a window is off screen, and **won't hide** when
 a window refused `SW_HIDE` — a protected process, or one that became elevated after HydraWin first
 saw it.
+
+![A window row's context menu: Focus, Unassign, Move to, Edit re-attach
+rule…](../images/window-menu.png)
 
 ## Keyboard
 
@@ -61,6 +67,9 @@ dragged task will land.
 
 ### Settings
 
+![The settings dialog, General tab: four checkboxes and the Appearance
+drop-down](../images/settings-general.png)
+
 Modal, opened from the toolbar and from the tray. Three tabs; edits are copies, written back only
 on OK.
 
@@ -74,6 +83,9 @@ There is no launch-at-login setting. It was dropped from the project; HydraWin t
 
 ### Re-attach rule editor
 
+![The rule editor: process file name, title pattern, the regex toggle, and the live list of other
+windows the pattern would also catch](../images/rule-editor.png)
+
 Opened from a window row's context menu. Process file name, title pattern, a substring/regex
 toggle, and a live list of which *other* open windows the rule matches. Saving edits the rule in
 place and does not disturb the live binding — the rule says how to recognise the window *next* time.
@@ -83,6 +95,9 @@ notification editor; the reasoning is in
 [architecture.md](architecture.md#settings-and-rule-dialogs).
 
 ## Tray menu
+
+![The tray menu: the three tasks with the active one ticked, then Show all windows, Open HydraWin,
+Settings…, Close to tray, Restore all & exit, Exit](../images/tray-menu.png)
 
 Rebuilt each time it opens.
 
@@ -222,6 +237,10 @@ If you regenerate it, **assert that each render came out at the size you asked f
 attempt shipped an `.ico` whose directory claimed every size but whose entries all held the same
 oversized image, and Windows drew the taskbar icon as a smudge — the renderer had silently ignored
 a malformed size argument.
+
+The documentation screenshots live in [`docs/images/`](../images/) and are captured with
+`PrintWindow` + `PW_RENDERFULLCONTENT`; the recipe, including the traps, is in
+[how_to.md](how_to.md#capture-a-screenshot-for-the-docs).
 
 **There is one icon, and there should stay one.** The plate is already dark (`#26344B`→`#121A26`)
 under bright shapes, so it reads on a light or a dark taskbar. A light variant would also have to be

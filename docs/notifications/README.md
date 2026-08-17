@@ -18,6 +18,9 @@ place · [../ui/README.md](../ui/README.md) for the badge, its tooltip and the c
 
 ## What it does
 
+![A task row carrying a red badge counting one waiting window, with a red dot on the window row that
+asked — which HydraWin has hidden](../images/badge.png)
+
 Every task row can carry a badge: a count of its windows that have asked for attention and have not
 been looked at since. Clicking it switches to the task and focuses the window that asked most
 recently, which is also what clears it.

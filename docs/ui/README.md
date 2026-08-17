@@ -11,13 +11,16 @@ and its process lifecycle.
 | Doc | Read it for |
 | --- | --- |
 | [architecture.md](architecture.md) | The layering rule, drag-and-drop, the picker gesture, focus policy, tray and single instance, the hotkey thread, theming, crash handling |
-| [how_to.md](how_to.md) | Adding a window to a task, rebinding a hotkey, reading the log, adding a setting, changing the theme |
+| [how_to.md](how_to.md) | Adding a window to a task, rebinding a hotkey, reading the log, adding a setting, changing the theme, capturing a documentation screenshot |
 | [reference.md](reference.md) | Drag payloads and row tags, dialogs, appearance and brush keys, log format and location, keyboard behaviour |
 
 Related: [../workspaces/README.md](../workspaces/README.md) for what a switch actually does ·
 [../notifications/README.md](../notifications/README.md) for what puts a badge on a row.
 
 ## What it does
+
+![The main window: three task cards on the left, the unassigned pane on the right, the active task
+outlined in its accent colour](../images/main-window-dark.png)
 
 One window, two panes: tasks on the left, unassigned windows on the right. A task row expands to
 show its windows, carries a colour chip, a live activity marker, a notification badge and a

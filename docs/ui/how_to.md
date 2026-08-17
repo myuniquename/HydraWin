@@ -172,3 +172,40 @@ hand. If you need to drive it anyway, what worked:
   occluded, which is the only reliable way to check what was actually rendered.
 - Be **DPI-aware** in the driver (`SetProcessDpiAwarenessContext`) or every coordinate will be
   wrong on a scaled desktop.
+
+## Capture a screenshot for the docs
+
+The images in [`../images/`](../images/) come from the real application, and a published screenshot
+of a window manager shows **every window on the machine** — so the shoot is staged rather than taken
+of whatever happens to be open.
+
+1. **Shoot on a new OS virtual desktop** (`Win+Ctrl+D`). Everything left behind is DWM-cloaked, and
+   `WindowFilter` drops cloaked windows, so the inventory contains only what you open there. Nothing
+   personal can reach the picture, and nothing of the user's is hidden, moved or closed.
+   `Win+Ctrl+F4` closes it again afterwards. Note the shell only reacts if the whole combination
+   arrives in **one `SendInput` batch** — separate `keybd_event` calls are ignored.
+2. **Delete `state.json`** and write the demo tasks by hand: a `ReattachRule` per window, matching
+   `ProcessFileName` plus a title substring. Terminals take any title you like
+   (`$Host.UI.RawUI.WindowTitle`), which is also how you stage a Claude Code activity marker.
+3. **Start the demo windows before HydraWin.** Rules are evaluated on *window-appeared* and never
+   again, so an app that appears with a placeholder title and renames itself a second later — a
+   browser, always — is left unassigned. Launching it first and starting HydraWin after it is the
+   whole fix.
+4. Drive the rest with the hotkeys and the mouse: `Ctrl+Alt+<n>` to switch, so the hidden chips and
+   the switch summary are real, and `FlashWindowEx` against a hidden window for a badge — the same
+   `HSHELL_FLASH` any application would raise.
+
+Capturing:
+
+- `PrintWindow` + `PW_RENDERFULLCONTENT` for the window and the dialogs, cropped to
+  `DWMWA_EXTENDED_FRAME_BOUNDS`; `GetWindowRect` includes the invisible resize border and would
+  leave a dead margin round the picture.
+- **Popups need a screen grab.** A context menu, and the tray menu, are separate top-level windows,
+  so `PrintWindow` on the main window never contains them. Ask UI Automation for the popup's
+  bounding rectangle and `CopyFromScreen` it.
+- The tray icon usually lives in the **overflow flyout**, not the taskbar itself: open
+  *Show Hidden Icons* first, then find the button by name under the overflow window.
+- Flatten to 24-bit before saving. Nothing else has to be true of the file.
+
+Finish by putting the desktop back: **Show all**, `--restore-all`, and confirm `journal.json` reads
+`[]` before closing the demo windows.

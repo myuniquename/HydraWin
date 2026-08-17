@@ -13,7 +13,8 @@ assigned to any task are never touched — they stay where they are in every tas
 window nobody can see is a window you cannot rescue by hand, **every hide is written to a journal on
 disk before it happens**, so a crash, a power cut or a kill from Task Manager can always be undone.
 
-<!-- Screenshot goes here: a capture of the main window with two or three populated tasks. -->
+![Three tasks in HydraWin. The active one lists its three windows; the other two are hidden and one
+carries a red badge.](docs/images/main-window-dark.png)
 
 ## Requirements
 
@@ -95,6 +96,10 @@ works when the user interface is wedged.
 HydraWin follows the Windows app theme, and follows it *live* — flip Windows between light and dark
 and the window, its dialogs, its menus and its title bar change with it, no restart. If you would
 rather pin one, **Settings ▸ General ▸ Appearance** offers *Follow Windows*, *Light* and *Dark*.
+
+| Light | Dark |
+| --- | --- |
+| ![The same window in the light theme](docs/images/main-window-light.png) | ![The same window in the dark theme](docs/images/main-window-dark.png) |
 
 A Windows high-contrast scheme overrides all three: HydraWin repaints in that scheme's own colours
 rather than painting over an accessibility setting you chose deliberately.

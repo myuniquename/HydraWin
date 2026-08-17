@@ -58,6 +58,9 @@ tagged ancestor. Details in [reference.md](reference.md#drag-and-drop-contract).
 - A **task row** waits for the movement threshold. A click there switches tasks, so starting on the
   press would make every switch a drag.
 
+![A window row mid-drag: the translucent ghost follows the pointer while the task under it is
+outlined as the drop target](../images/drag-drop.png)
+
 Feedback is a translucent copy of the row (`DragGhostAdorner`) tracked at *window* level so it
 keeps up over the toolbar, the splitter and the gaps between drop targets — the drop cursor alone
 says a drag is happening but not what is being dragged, and shows nothing until the pointer is over
@@ -203,6 +206,9 @@ Both preview live against the open windows, through one `RulePreview` helper in 
 same matching the tracker uses.
 
 ## Appearance and theming
+
+![The same window with Appearance pinned to Light: identical layout, and the title bar light
+too](../images/main-window-light.png)
 
 HydraWin follows the Windows app theme by default, and the user can override that with **Follow
 Windows / Light / Dark** on the settings dialog's *General* tab. `SettingsModel.Appearance` stores
