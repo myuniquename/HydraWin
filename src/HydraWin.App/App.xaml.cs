@@ -22,6 +22,8 @@ public partial class App : Application
     private ShellHookListener? shellHook;
     private ThemeManager? theme;
     private SystemThemeListener? themeListener;
+
+    private SessionListener? sessionListener;
     private MainWindow? window;
     private bool forceRestoreOnExit;
 
@@ -88,6 +90,7 @@ public partial class App : Application
         tray = new TrayIcon(window.ViewModel, ShowWindow, ExitApplication, ShowSettings);
         StartHotkeys();
         StartShellHook();
+        StartSessionListener();
 
         window.ViewModel.HotkeysChanged += (_, _) => RestartHotkeys();
         window.ViewModel.AppearanceChanged += (_, _) => theme.Apply(window.ViewModel.Appearance);
@@ -221,6 +224,30 @@ public partial class App : Application
         window.ViewModel.NotificationRaised += OnNotificationRaised;
     }
 
+    /// <summary>
+    /// Subscribes to the signals that say the user has left the machine, so a task's timer is not
+    /// still running against a locked screen or a sleeping laptop.
+    /// </summary>
+    private void StartSessionListener()
+    {
+        if (window is null)
+        {
+            return;
+        }
+
+        sessionListener = new SessionListener(
+            window,
+            Win32SessionApi.Instance,
+            change => window.ViewModel.OnSessionChanged(change));
+
+        if (!sessionListener.IsListening)
+        {
+            window.ViewModel.Note(
+                "Windows refused the lock notification — task timers will keep running while the "
+                + "screen is locked.");
+        }
+    }
+
     private void OnNotificationRaised(object? sender, string label)
     {
         if (window is null || tray is null)
@@ -238,6 +265,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        sessionListener?.Dispose();
         themeListener?.Dispose();
         shellHook?.Dispose();
         hotkeys?.Dispose();

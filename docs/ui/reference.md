@@ -14,9 +14,11 @@ and crosshair, with the window rows beneath each](../images/task-rows.png)
 | Colour chip | The task's accent, from `ColorHex` |
 | Activity marker | The strongest live Claude Code marker among the task's windows, visible even when the task is collapsed |
 | Badge | Count of windows waiting for attention; clicking it switches, focuses the newest and clears it |
+| Time on task | How long this task has been the switched-to one, `HH:mm:ss`, redrawn every second. Shown on every row, including the ones still at `00:00:00` — the seconds moving on one row and standing still on the others is how you can see it is running. Hours accumulate rather than rolling into days, so a long-lived task reads `137:05:00`. Hovering gives the same total in words plus whether the clock is counting right now. Right-click → **Reset time** clears it |
 | `N win` | How many windows the task holds |
 | Crosshair | Press and drag onto any window on screen to add it to this task |
 | Window row, dragged | Assigns to a task, or unassigns when dropped on the right-hand pane |
+| Task row, right-clicked | Switch to this task · Rename · Reset time · Delete |
 | Window row, right-clicked | Focus · Unassign · Move to · Edit re-attach rule… |
 | Unassigned pane | Every managed window belonging to no task. These stay visible through every switch |
 

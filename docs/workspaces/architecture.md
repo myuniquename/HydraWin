@@ -287,6 +287,103 @@ Moving a window between tasks **removes** the old assignment rather than merely 
 Unbinding alone leaves the previous task holding a rule that still recognises the window, and after
 the next restart both tasks claim it — whichever re-attaches first wins.
 
+## Time on task
+
+Each task carries `ActiveSeconds`: how long it has been the switched-to task, over its whole life.
+`ActiveTimeLedger` owns the arithmetic and nothing else — no Win32, no UI, and no timer of its
+own. It holds only the sub-second remainder and where the open segment started; **the running total
+lives on `HydraWinTask` itself**, so there is exactly one copy of the number and it cannot drift
+from what gets written to `state.json`.
+
+### `SetActiveTask` is the accounting boundary, not `SwitchTo`
+
+`WorkspaceService.SetActiveTask` is the only writer of `ActiveTaskId`, and `ActiveTaskId` *is* the
+definition of "the active task". Measuring the same field that defines the state is the invariant
+worth having. `SwitchEngine.SwitchTo` would have been the wrong seam three ways: it does not fire
+for *Show all*, which sets the active task to `null` and must stop the clock; it does not fire for
+a delete; and its `SwitchCompleted` event is raised *after* `SetActiveTask` anyway.
+
+`DeleteTask` used to clear `ActiveTaskId` by plain assignment, bypassing `SetActiveTask` entirely.
+Both now route through one private `SetActiveTaskLocked`, because the bypass would have left the
+ledger crediting a task that no longer exists — invisible until somebody deleted one.
+
+The ledger is called **synchronously** from there rather than through an event. Every other event
+on `WorkspaceService` is a UI refresh and does not care when it lands; this one marks a time
+boundary, and a boundary stamped at delivery instead of at the switch would mis-attribute the gap.
+
+Re-selecting the task already running is a no-op. `SwitchTo` is idempotent and re-runs its whole
+body on every re-click, so this happens constantly.
+
+### Monotonic, because a wall clock jumps
+
+Durations are measured with `TimeProvider.GetTimestamp`, never `DateTimeOffset.UtcNow`. An NTP
+correction, a daylight-saving boundary or a user setting the clock all move wall time, and every
+one of those jumps would land straight in somebody's lifetime total. This is the repository's first
+clock seam; the BCL type was taken rather than a hand-rolled interface, and the test double is
+hand-written so no fake-supplying package had to come with it.
+
+### Two timers, because redrawing and checkpointing want different rates
+
+`MainViewModel` runs a **one-second** `DispatcherTimer` that only redraws the rows, and a
+**one-minute** one that folds the open segment into the model and writes it out.
+
+The redraw has to be per-second because the cell shows `HH:mm:ss`, and the reason it shows seconds
+is that a clock which does not visibly move is indistinguishable from a broken one. It costs
+nothing to run that fast: `ActiveTimeLedger.TotalFor` already includes the segment in flight, so
+the redraw reads and formats and touches neither the model nor the disk, and the generated property
+setters drop a set that did not change the string.
+
+The checkpoint stays at a minute, doing two jobs: it bounds what a crash or a kill costs to that
+minute, and it keeps every sample well inside `ActiveTimeLedger.MaxCreditPerSample`, so ordinary
+running is never clipped by the safety net below. Checkpointing at the redraw rate instead would
+rewrite `state.json` 3600 times an hour for a number nobody reads back any sooner. It writes
+through the usual debounced `WorkspaceStore`, and only while a task is active and the user is
+present.
+
+Time data stays out of `journal.json`. That file is flushed on the hide hot path and its contract
+is exactly one thing — which windows are hidden. Unrelated payload would slow the invariant and
+blur what recovery is promising.
+
+### The credit clamp is what makes a missing suspend harmless
+
+A single sample can never credit more than `MaxCreditPerSample`, two minutes. That is the fallback
+for the machine that goes away without saying so: a battery-critical hibernate, a power cut, a
+dispatcher wedged for minutes. Whatever happened, the next sample sees an enormous delta and
+credits two minutes instead of hours. It needs no second clock to cross-check against — which is
+the point, since a second clock can jump too. A clock that runs *backwards* credits nothing at all
+and carries on normally afterwards.
+
+### Away is a set of reasons, not a count
+
+The clock stops while `locked` or `suspended` is in force and starts again only when neither is.
+A nesting count would be wrong in both directions: it goes negative on a resume that never had a
+suspend, and it sticks on a duplicate lock. The case that decides it is a machine that sleeps while
+locked and then wakes on a timer with nobody there — the resume arrives, the screen is still
+locked, and a count would restart the clock against an empty chair. Both kinds of resume
+(`PBT_APMRESUMESUSPEND` and `PBT_APMRESUMEAUTOMATIC`) count as back for the same reason: if nobody
+is really there, `Locked` is still holding the clock.
+
+Note that `0x7` means `WTS_SESSION_LOGON` on one message and `PBT_APMRESUMESUSPEND` on the other,
+so the `wParam` is never read without its message id.
+
+### Known limitation: a screensaver that does not lock does not pause the clock
+
+Windows sends no unsolicited message when the shell starts a screensaver, so the only ways to see
+one are to poll `SPI_GETSCREENSAVERRUNNING` or to watch `EVENT_SYSTEM_DESKTOPSWITCH`. Polling was
+offered and declined; the WinEvent was rejected outright, because it fires on *every* secure-desktop
+switch — accepting a UAC prompt would falsely pause the timer. `WM_SYSCOMMAND`/`SC_SCREENSAVE`
+reaches only the foreground window, which HydraWin almost never is when a screensaver starts.
+
+So: a screensaver set to *On resume, display logon screen* locks the session and **is** covered.
+One without that box ticked is not covered at all, and the clock runs through it.
+
+The other edges, stated plainly:
+
+- If `WTSRegisterSessionNotification` is refused, lock and unlock go undetected and the clock runs
+  through a locked screen. The user is told once, in the status line.
+- Losing the foreground to something outside the active task does not pause anything. The feature
+  measures which task is *switched to*, not which window is focused.
+
 ## Persistence
 
 `state.json` is preference data: tasks, assignments, rules, settings. `journal.json` is

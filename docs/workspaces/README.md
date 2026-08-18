@@ -9,8 +9,8 @@ HydraWin's window inventory, task model, switching and crash recovery.
 
 | Doc | Read it for |
 | --- | --- |
-| [architecture.md](architecture.md) | Which windows are managed and why, the journal-before-hide invariant, the switch algorithm, per-application behaviour, why OS virtual desktops were rejected |
-| [how_to.md](how_to.md) | Running the crash drill, recovering when the UI will not start, hand-editing the model, teaching HydraWin about a stubborn application |
+| [architecture.md](architecture.md) | Which windows are managed and why, the journal-before-hide invariant, the switch algorithm, how time on task is counted and paused, per-application behaviour, why OS virtual desktops were rejected |
+| [how_to.md](how_to.md) | Running the crash drill, drilling the away-pause, recovering when the UI will not start, hand-editing the model, resetting a task's timer, teaching HydraWin about a stubborn application |
 | [reference.md](reference.md) | `state.json` and `journal.json` schemas, the `--restore-all` command line, hotkey defaults, filter verdicts, file locations |
 
 Related: [../notifications/README.md](../notifications/README.md) for how a hidden window asks for
@@ -43,9 +43,10 @@ window is not in it.
                     └────────┬─────────┘
                              │ appeared / disappeared / title / foreground
                              ▼
-                    ┌──────────────────┐        ┌───────────────────┐
-                    │ WorkspaceService │◀──────▶│  WorkspaceStore   │  state.json
+   SessionListener  ┌──────────────────┐        ┌───────────────────┐
+   lock / suspend ─▶│ WorkspaceService │◀──────▶│  WorkspaceStore   │  state.json
                     │  tasks + rules   │        │  (debounced save) │  (preferences)
+                    │ ActiveTimeLedger │  time on task, stopped while away
                     └────────┬─────────┘        └───────────────────┘
                              │ model
                              ▼
@@ -75,6 +76,8 @@ window is not in it.
 | Task and assignment model | `src/HydraWin.Core/Workspaces/HydraWinTask.cs`, `WindowAssignment.cs` |
 | Recognising a window again after a restart | `src/HydraWin.Core/Workspaces/ReattachRule.cs`, `RuleMatcher.cs` |
 | Owning the model, the only writer of `state.json` | `src/HydraWin.Core/Workspaces/WorkspaceService.cs` |
+| How long each task has been the active one | `src/HydraWin.Core/Workspaces/ActiveTimeLedger.cs`, `ActiveTimeFormat.cs` |
+| Knowing the user has walked away | `src/HydraWin.Core/Interop/ISessionApi.cs`, `src/HydraWin.App/Services/SessionListener.cs` |
 | Who hides and who shows, as a pure computation | `src/HydraWin.Core/Workspaces/SwitchPlan.cs` |
 | Performing a switch, in the order that keeps the invariant | `src/HydraWin.Core/Workspaces/SwitchEngine.cs` |
 | The write-ahead record of every hidden window | `src/HydraWin.Core/Recovery/RecoveryJournal.cs` |

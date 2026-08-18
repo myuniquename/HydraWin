@@ -51,6 +51,58 @@ To exercise the worst interleaving — a crash *between* the journal flush and t
 `SwitchEngine.AfterJournalFlush`, a test hook that fires at exactly that point. Wiring it to
 `Environment.FailFast` is a truer crash than a breakpoint, since not even `OnExit` runs.
 
+## Drill the away-pause by hand
+
+The whole Win32 half of the timer — lock, unlock, suspend, resume — has no automated coverage,
+for the same reason the shell hook has none. Run this after touching `SessionListener`,
+`Win32SessionApi` or the `WTS` wrappers in `NativeMethods`. Report what you observed, never an
+exit code.
+
+1. Switch to a task. Its clock starts moving a second at a time while every other row stands
+   still — that alone is the check that it is running. Note the figure. Open
+   `%APPDATA%\HydraWin\logs\hydrawin.log` in something that follows the file.
+2. Press `Win+L`. Wait three minutes by a clock that is not this machine's. Unlock.
+
+   **Verify:** the row grew by **at most one minute**, not three, and the log carries
+   `Timing paused — the screen is locked.` followed by `Timing resumed.`
+
+3. Switch to a task, note the figure, then Start → Sleep. Wait five minutes. Wake the machine and
+   unlock.
+
+   **Verify:** the row grew by at most one minute. Then read the log: whether a pause line appeared
+   *before* the sleep tells you whether `PBT_APMSUSPEND` actually arrived on this machine. Either
+   answer is fine — the two-minute credit clamp bounds the damage regardless — but it is worth
+   recording which one this hardware does.
+
+4. Sleep the machine while it is **already locked**, wake it, and leave it on the lock screen for a
+   minute before unlocking.
+
+   **Verify:** the figure does not move until the actual unlock. This is the case a nesting count
+   would get wrong, and the only way to see it is to do it.
+
+5. Set a one-minute screensaver with *On resume, display logon screen* **unticked**, switch to a
+   task and leave the machine alone.
+
+   **Verify:** the figure keeps climbing. This is the documented limitation, not a bug — see
+   *Known limitation: a screensaver that does not lock does not pause the clock* in
+   [architecture.md](architecture.md). Tick the box and repeat: now it pauses, because the session
+   locks.
+
+6. Switch to a task, wait two minutes, then kill `hydrawin.exe` from Task Manager and relaunch.
+
+   **Verify:** at most one minute was lost, and no other task's figure moved.
+
+## Reset a task's timer
+
+Right-click the task row and choose **Reset time**. There is no confirmation — it is a counter,
+not data — but the figure that was discarded is written to the log first, so it can be read back
+out of `%APPDATA%\HydraWin\logs\hydrawin.log` if it was cleared by accident.
+
+To zero one by hand instead, close HydraWin and set the task's `ActiveSeconds` to `0` in
+`state.json`. Deleting the property entirely reads as `0` as well.
+
+**Verify:** the row reads `00:00:00` and stops moving, and the tooltip reads `Never switched to`.
+
 ## Teach HydraWin about a stubborn application
 
 Symptoms and what they mean:

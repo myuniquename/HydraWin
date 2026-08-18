@@ -220,6 +220,12 @@ internal static partial class NativeMethods
     private const uint HCF_HIGHCONTRASTON = 0x0001;
 
     /// <summary>
+    /// <c>NOTIFY_FOR_THIS_SESSION</c>: HydraWin only manages windows in its own session, so the
+    /// other sessions on the machine locking and unlocking are none of its business.
+    /// </summary>
+    private const uint NOTIFY_FOR_THIS_SESSION = 0x0;
+
+    /// <summary>
     /// Out-of-context WinEvent callback. The caller <b>must</b> keep its instance alive for the
     /// hook's lifetime — a collected delegate kills the hook silently (repo gotcha).
     /// </summary>
@@ -382,6 +388,20 @@ internal static partial class NativeMethods
         int cx,
         int cy,
         uint uFlags);
+
+    [LibraryImport(
+        "wtsapi32.dll",
+        EntryPoint = "WTSRegisterSessionNotification",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool RegisterSessionNotificationCore(nint hWnd, uint dwFlags);
+
+    [LibraryImport(
+        "wtsapi32.dll",
+        EntryPoint = "WTSUnRegisterSessionNotification",
+        SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool UnregisterSessionNotificationCore(nint hWnd);
 
     [LibraryImport("user32.dll", EntryPoint = "RegisterShellHookWindow", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -900,6 +920,30 @@ internal static partial class NativeMethods
         if (hwnd != 0)
         {
             DeregisterShellHookWindowCore(hwnd);
+        }
+    }
+
+    /// <summary>
+    /// Asks Windows to post <c>WM_WTSSESSION_CHANGE</c> to a window when this session locks or
+    /// unlocks, so HydraWin can stop counting time against a task nobody is looking at.
+    /// </summary>
+    /// <remarks>
+    /// Needs a real window handle. The null-hwnd thread-queue trick <see cref="RegisterHotKey"/>
+    /// uses does not apply, because this is a window message and not a thread message. Refusal is
+    /// survivable rather than fatal — it fails if the Terminal Services service is not running —
+    /// and the caller degrades to counting time through a locked screen, so it is reported and not
+    /// thrown.
+    /// </remarks>
+    /// <returns><see langword="false"/> when Windows refused the subscription.</returns>
+    internal static bool RegisterSessionNotifications(nint hwnd) =>
+        hwnd != 0 && RegisterSessionNotificationCore(hwnd, NOTIFY_FOR_THIS_SESSION);
+
+    /// <summary>Unsubscribes a window from the session's lock and unlock notifications.</summary>
+    internal static void UnregisterSessionNotifications(nint hwnd)
+    {
+        if (hwnd != 0)
+        {
+            UnregisterSessionNotificationCore(hwnd);
         }
     }
 

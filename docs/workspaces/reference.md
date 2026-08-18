@@ -25,6 +25,7 @@ with `UnsafeRelaxedJsonEscaping` so they stay readable and hand-editable.
       "Name": "Alpha",
       "ColorHex": "#4C8DFF",
       "Order": 1,
+      "ActiveSeconds": 8073,
       "Assignments": [
         {
           "Id": "a275491a-ab06-44ae-a8bf-900684da97c3",
@@ -48,11 +49,22 @@ with `UnsafeRelaxedJsonEscaping` so they stay readable and hand-editable.
 | `Tasks[].Name` | Display name; unique only by convention |
 | `Tasks[].ColorHex` | Row accent, `#RRGGBB` |
 | `Tasks[].Order` | 1-based position. **Load-bearing**: `Ctrl+Alt+1..9` address tasks by it, so renumber from 1 when editing by hand |
+| `Tasks[].ActiveSeconds` | Lifetime seconds this task has been the switched-to one. Absent in a document written before the feature existed, which reads as 0. A negative value — only a hand-edit can produce one — reads as 0 rather than as negative time |
 | `Assignments[].Id` | Stable identity; also the payload of a drag |
 | `Rule.ProcessFileName` | Image file name only, compared case-insensitively. The full path changes when an application updates |
 | `Rule.TitlePattern` | Substring, or a regex when `TitleIsRegex` is set. Empty matches any title of that process |
 | `Rule.TitleIsRegex` | Opt-in regex mode. Substring is the default because it is predictable |
 | `ActiveTaskId` | The task currently switched to, or `null` for "everything visible" |
+
+`ActiveSeconds` is whole seconds and not a `TimeSpan` because this file is hand-edited: `8073` is
+unambiguous, whereas a `TimeSpan` is written `"02:14:33"` and switches to `"1.02:14:33"` past a day
+— a day separator spelled as a dot is exactly the sort of thing a hand-edit gets wrong. Every other
+scalar here is a bool, an int, a string or an enum name.
+
+The segment **currently in flight** is not in the file. It lives in `ActiveTimeLedger` until a
+switch, an away edge or the one-minute tick folds it in, so a figure read straight out of
+`state.json` can lag the row by up to a minute. That is the whole cost of a crash, and it is
+deliberate: see *Time on task* in [architecture.md](architecture.md).
 
 Runtime-only values are deliberately **not** persisted: an assignment's bound window handle, a
 task's last-active window, and the `Unmanageable` flag. Handles mean nothing across restarts, and a

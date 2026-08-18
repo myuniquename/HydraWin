@@ -612,6 +612,9 @@ public partial class MainWindow : Window
     private void OnDeleteTaskClick(object sender, RoutedEventArgs e) =>
         viewModel.DeleteTaskCommand.Execute(menuTask);
 
+    private void OnResetTaskTimeClick(object sender, RoutedEventArgs e) =>
+        viewModel.ResetTaskTimeCommand.Execute(menuTask);
+
     private void OnRenameTaskClick(object sender, RoutedEventArgs e)
     {
         if (menuTask is not null)

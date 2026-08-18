@@ -12,6 +12,7 @@ public sealed class WorkspaceServiceTests : IDisposable
 
     private readonly WorkspaceStore store;
     private readonly WorkspaceService service;
+    private readonly FakeClock clock = new();
 
     public WorkspaceServiceTests()
     {
@@ -20,7 +21,7 @@ public sealed class WorkspaceServiceTests : IDisposable
         // A long debounce so nothing writes spontaneously mid-test: the tests that care about
         // disk call Flush() explicitly, which is the same path shutdown uses.
         store = new WorkspaceStore(Path.Combine(directory, "state.json"), TimeSpan.FromMinutes(5));
-        service = new WorkspaceService(store);
+        service = new WorkspaceService(store, clock);
     }
 
     public void Dispose()
@@ -295,5 +296,119 @@ public sealed class WorkspaceServiceTests : IDisposable
 
         Assert.False(reopened.State.Settings.AlwaysOnTop);
         Assert.True(reopened.State.Settings.RestoreOnExit);
+    }
+
+    [Fact]
+    public void SwitchingTasksCreditsTheTimeToTheOneThatWasActive()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        HydraWinTask beta = service.CreateTask("Beta");
+
+        service.SetActiveTask(alpha.Id);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.SetActiveTask(beta.Id);
+
+        Assert.Equal(TimeSpan.FromMinutes(1), service.ActiveTimeOf(alpha.Id));
+        Assert.Equal(TimeSpan.Zero, service.ActiveTimeOf(beta.Id));
+    }
+
+    [Fact]
+    public void ATasksAccumulatedTimeSurvivesARestart()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        service.SetActiveTask(alpha.Id);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.CheckpointActiveTime();
+        service.Flush();
+
+        using var reopenedStore = new WorkspaceStore(store.Path, TimeSpan.FromMinutes(5));
+        var reopened = new WorkspaceService(reopenedStore);
+
+        Assert.Equal(60, reopened.State.Tasks[0].ActiveSeconds);
+    }
+
+    [Fact]
+    public void ShowingAllTasksStopsTheClockOnTheTaskThatWasActive()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        service.SetActiveTask(alpha.Id);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.SetActiveTask(null);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.CheckpointActiveTime();
+
+        Assert.Equal(TimeSpan.FromMinutes(1), service.ActiveTimeOf(alpha.Id));
+    }
+
+    [Fact]
+    public void DeletingTheActiveTaskStopsItsClockThroughTheSameDoorASwitchUses()
+    {
+        // DeleteTask used to clear ActiveTaskId by assignment, which would leave the ledger
+        // crediting a task that no longer exists — invisible until someone deletes one.
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        HydraWinTask beta = service.CreateTask("Beta");
+
+        service.SetActiveTask(alpha.Id);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.DeleteTask(alpha.Id);
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.CheckpointActiveTime();
+
+        Assert.Null(service.State.ActiveTaskId);
+        Assert.Equal(TimeSpan.Zero, service.ActiveTimeOf(beta.Id));
+    }
+
+    [Fact]
+    public void TheClockStopsWhileTheUserIsAwayAndStartsAgainWhenTheyAreBack()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        service.SetActiveTask(alpha.Id);
+
+        Assert.True(service.NoteUserAway(AwayReason.Locked));
+        Assert.True(service.IsUserAway);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.CheckpointActiveTime();
+        Assert.Equal(TimeSpan.Zero, service.ActiveTimeOf(alpha.Id));
+
+        Assert.True(service.NoteUserBack(AwayReason.Locked));
+        Assert.False(service.IsUserAway);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.CheckpointActiveTime();
+        Assert.Equal(TimeSpan.FromMinutes(1), service.ActiveTimeOf(alpha.Id));
+    }
+
+    [Fact]
+    public void ResettingATasksTimeIsWrittenOut()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        service.SetActiveTask(alpha.Id);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.CheckpointActiveTime();
+
+        service.ResetActiveTime(alpha.Id);
+        service.Flush();
+
+        using var reopenedStore = new WorkspaceStore(store.Path, TimeSpan.FromMinutes(5));
+        var reopened = new WorkspaceService(reopenedStore);
+
+        Assert.Equal(0, reopened.State.Tasks[0].ActiveSeconds);
+    }
+
+    [Fact]
+    public void TheTaskThatWasActiveAtTheLastExitPicksItsClockBackUpOnLaunch()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        service.SetActiveTask(alpha.Id);
+        service.Flush();
+
+        var relaunchClock = new FakeClock();
+        using var reopenedStore = new WorkspaceStore(store.Path, TimeSpan.FromMinutes(5));
+        var reopened = new WorkspaceService(reopenedStore, relaunchClock);
+
+        relaunchClock.Advance(TimeSpan.FromMinutes(1));
+        reopened.CheckpointActiveTime();
+
+        Assert.Equal(TimeSpan.FromMinutes(1), reopened.ActiveTimeOf(alpha.Id));
     }
 }

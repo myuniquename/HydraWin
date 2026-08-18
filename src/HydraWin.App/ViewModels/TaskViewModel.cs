@@ -68,6 +68,17 @@ public sealed partial class TaskViewModel : ObservableObject
     [ObservableProperty]
     public partial string ActivityGlyph { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Lifetime time this task has been the active one, formatted for the row. Empty when the
+    /// task has never been switched to, which collapses the cell.
+    /// </summary>
+    [ObservableProperty]
+    public partial string ActiveTimeText { get; set; } = string.Empty;
+
+    /// <summary>The same total spelled out to the second, for the cell's tooltip.</summary>
+    [ObservableProperty]
+    public partial string ActiveTimeTooltip { get; set; } = string.Empty;
+
     /// <summary>The windows belonging to this task.</summary>
     public ObservableCollection<WindowViewModel> Windows { get; } = [];
 

@@ -111,7 +111,7 @@ public sealed class JsonStoreTests : IDisposable
 
         JsonElement firstTask = document.RootElement.GetProperty("Tasks")[0];
         Assert.Equal(
-            ["Id", "Name", "ColorHex", "Order", "Assignments"],
+            ["Id", "Name", "ColorHex", "Order", "ActiveSeconds", "Assignments"],
             firstTask.EnumerateObject().Select(p => p.Name));
 
         Assert.Equal(

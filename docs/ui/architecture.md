@@ -36,6 +36,13 @@ constantly. So a rebuild **defers** while a row is being renamed and flushes whe
 commits or is abandoned. The pane is a second or two stale meanwhile, bounded by the fact that any
 click outside commits.
 
+Because a rebuild throws away every row object, anything pushed onto a row from outside has to be
+pushed again afterwards. `RefreshBadges` and `RefreshActiveTimes` both run at the end of `Rebuild`
+for exactly that reason — a task's time on task is set by a once-a-second redraw, and without the
+re-seed it would blank out the next time any window on the desktop opened or closed, which is
+constantly. That redraw sets properties and never rebuilds, which is what makes running it
+every second affordable.
+
 Similarly, a newly created task remembers its **id**, not its row object: creating a task raises
 `TasksChanged`, so the row has already been replaced by the time the command returns. `Rebuild`
 applies the renaming flag by construction, which holds however many rebuilds happen in between.

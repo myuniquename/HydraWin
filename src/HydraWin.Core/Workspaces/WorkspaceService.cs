@@ -32,15 +32,30 @@ public sealed class WorkspaceService
     private readonly Dictionary<Guid, HydraWinTask> taskByAssignmentId = [];
     private readonly SynchronizationContext? context;
     private readonly Lock gate = new();
+    private readonly ActiveTimeLedger ledger;
 
     /// <summary>Loads the persisted state and indexes it.</summary>
-    public WorkspaceService(WorkspaceStore store)
+    /// <param name="store">Where <c>state.json</c> lives.</param>
+    /// <param name="clock">
+    /// The clock the active-time ledger measures with. Defaults to the system one; tests pass a
+    /// clock they drive by hand.
+    /// </param>
+    public WorkspaceService(WorkspaceStore store, TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         this.store = store;
         context = SynchronizationContext.Current;
         State = store.Load();
         Reindex();
+
+        // Seeded after the load, so the task that was active when HydraWin last exited picks its
+        // clock straight back up without waiting for a switch.
+        // Reads State directly rather than through FindTask, because every ledger call already
+        // holds gate and there is no reason to take it a second time.
+        ledger = new ActiveTimeLedger(
+            id => State.Tasks.Find(t => t.Id == id),
+            clock ?? TimeProvider.System);
+        ledger.SetActive(State.ActiveTaskId);
     }
 
     /// <summary>A task was created, renamed, deleted or reordered.</summary>
@@ -153,8 +168,12 @@ public sealed class WorkspaceService
 
             if (State.ActiveTaskId == taskId)
             {
-                State.ActiveTaskId = null;
+                // Through the same door a switch uses. Assigning State.ActiveTaskId directly here
+                // would leave the ledger crediting a task that no longer exists, forever.
+                SetActiveTaskLocked(null);
             }
+
+            ledger.Forget(taskId);
         }
 
         Persist();
@@ -369,7 +388,83 @@ public sealed class WorkspaceService
     {
         lock (gate)
         {
-            State.ActiveTaskId = taskId;
+            SetActiveTaskLocked(taskId);
+        }
+
+        Persist();
+        Raise(TasksChanged);
+    }
+
+    /// <summary>
+    /// Lifetime time this task has been the active one, including the segment in flight.
+    /// </summary>
+    public TimeSpan ActiveTimeOf(Guid taskId)
+    {
+        lock (gate)
+        {
+            return ledger.TotalFor(taskId);
+        }
+    }
+
+    /// <summary>
+    /// Folds the active task's elapsed time into the model and writes it out.
+    /// </summary>
+    /// <remarks>
+    /// Called on the App layer's one-minute tick, on every away edge and at shutdown. The write
+    /// goes through the usual debounced store, so a burst of these coalesces into one file write.
+    /// </remarks>
+    public void CheckpointActiveTime()
+    {
+        lock (gate)
+        {
+            ledger.Sample();
+        }
+
+        Persist();
+    }
+
+    /// <summary>The user left the machine. Returns whether this actually stopped the clock.</summary>
+    public bool NoteUserAway(AwayReason reason)
+    {
+        bool stopped;
+        lock (gate)
+        {
+            stopped = ledger.GoAway(reason);
+        }
+
+        // Lock and suspend are exactly the moments a machine may not come back, so the segment
+        // that just closed is written out rather than left waiting for the next tick.
+        Persist();
+        return stopped;
+    }
+
+    /// <summary>The user is back. Returns whether this actually restarted the clock.</summary>
+    public bool NoteUserBack(AwayReason reason)
+    {
+        lock (gate)
+        {
+            return ledger.ComeBack(reason);
+        }
+    }
+
+    /// <summary>Whether the active-time clock is currently stopped because the user is away.</summary>
+    public bool IsUserAway
+    {
+        get
+        {
+            lock (gate)
+            {
+                return ledger.IsAway;
+            }
+        }
+    }
+
+    /// <summary>Zeroes a task's lifetime active time. The clock keeps running if it was running.</summary>
+    public void ResetActiveTime(Guid taskId)
+    {
+        lock (gate)
+        {
+            ledger.Reset(taskId);
         }
 
         Persist();
@@ -507,6 +602,22 @@ public sealed class WorkspaceService
                 assignment.BoundHwnd = null;
             }
         }
+    }
+
+    /// <summary>
+    /// Writes the active task and moves the ledger's segment with it. The caller holds
+    /// <c>gate</c> and persists afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The ledger is called synchronously here rather than through an event, because this is a
+    /// <em>time boundary</em> and not a UI refresh: <see cref="Raise(EventHandler)"/> posts to the
+    /// captured context, and a boundary stamped at delivery rather than at the switch would
+    /// mis-attribute the gap.
+    /// </remarks>
+    private void SetActiveTaskLocked(Guid? taskId)
+    {
+        State.ActiveTaskId = taskId;
+        ledger.SetActive(taskId);
     }
 
     private void Persist() => store.SaveDebounced(State);

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using HydraWin.App.Services;
@@ -40,6 +41,32 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly WindowIconCache icons;
     private readonly AppLog log = AppLog.Default;
     private readonly Dictionary<nint, WindowViewModel> windowsByHwnd = [];
+
+    /// <summary>How often the running clock on the rows is redrawn.</summary>
+    /// <remarks>
+    /// One second, because the cell shows seconds and a clock that does not move is
+    /// indistinguishable from a broken one. This tick <b>only reads</b>: it re-formats what
+    /// <see cref="WorkspaceService.ActiveTimeOf"/> already reports, including the segment in
+    /// flight, and writes nothing to disk. The generated property setters drop a set that did not
+    /// change the string, so the rows that are not moving cost a comparison each.
+    /// </remarks>
+    private static readonly TimeSpan ActiveTimeRedrawInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How often the active task's elapsed time is folded into the model and written out.
+    /// </summary>
+    /// <remarks>
+    /// One minute, which is one number doing two jobs: it bounds what a kill or a crash costs to
+    /// that minute, and it keeps every sample comfortably inside
+    /// <see cref="ActiveTimeLedger.MaxCreditPerSample"/>, so ordinary running is never clipped by
+    /// the safety net that exists for a machine that vanished without saying so. Deliberately
+    /// <em>not</em> the redraw interval: checkpointing once a second would rewrite
+    /// <c>state.json</c> 3600 times an hour for a number nobody would read back any sooner.
+    /// </remarks>
+    private static readonly TimeSpan ActiveTimeCheckpointInterval = TimeSpan.FromMinutes(1);
+
+    private readonly DispatcherTimer activeTimeRedraw;
+    private readonly DispatcherTimer activeTimeCheckpoint;
     private Guid? pendingRenameTaskId;
     private bool rebuildDeferred;
     private int lastAnnouncedTotal;
@@ -105,6 +132,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         notifications.TaskBadgeChanged += (_, _) => RefreshBadges();
 
         switchEngine.SwitchCompleted += OnSwitchCompleted;
+
+        activeTimeRedraw = new DispatcherTimer { Interval = ActiveTimeRedrawInterval };
+        activeTimeRedraw.Tick += OnActiveTimeRedraw;
+
+        activeTimeCheckpoint = new DispatcherTimer { Interval = ActiveTimeCheckpointInterval };
+        activeTimeCheckpoint.Tick += OnActiveTimeCheckpoint;
 
         tracker.WindowAppeared += OnWindowAppeared;
         tracker.WindowDisappeared += OnWindowDisappeared;
@@ -365,6 +398,47 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<TaskViewModel, bool>? ConfirmDelete { get; set; }
 
+    /// <summary>
+    /// The user left the machine or came back. Fed from the session listener in the App layer,
+    /// which is the only thing that knows this arrived as a window message.
+    /// </summary>
+    public void OnSessionChanged(SessionTransition change)
+    {
+        if (change.Away)
+        {
+            if (workspaces.NoteUserAway(change.Reason))
+            {
+                Say(change.Reason == AwayReason.Locked
+                    ? "Timing paused — the screen is locked."
+                    : "Timing paused — the machine is going to sleep.");
+            }
+        }
+        else if (workspaces.NoteUserBack(change.Reason))
+        {
+            Say("Timing resumed.");
+        }
+
+        RefreshActiveTimes();
+    }
+
+    /// <summary>
+    /// Clears a task's accumulated time. The clock keeps running on it if it was running.
+    /// </summary>
+    [RelayCommand]
+    public void ResetTaskTime(TaskViewModel? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        // Said before it is cleared, so the discarded figure is recoverable from the log.
+        string cleared = task.ActiveTimeText.Length == 0 ? "nothing" : task.ActiveTimeText;
+        workspaces.ResetActiveTime(task.Id);
+        RefreshActiveTimes();
+        Say($"Reset the timer on “{task.Name}” — {cleared} cleared.");
+    }
+
     /// <summary>Starts tracking. Must be called on the dispatcher thread.</summary>
     public void Start()
     {
@@ -375,6 +449,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         Rebuild();
+        activeTimeRedraw.Start();
+        activeTimeCheckpoint.Start();
         Say($"{windowsByHwnd.Count} window(s) found. Drag one onto a task to begin.");
     }
 
@@ -697,7 +773,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         switchEngine.SwitchCompleted -= OnSwitchCompleted;
         tracker.Dispose();
 
-        // Shutdown must not lose the last edits.
+        activeTimeRedraw.Stop();
+        activeTimeRedraw.Tick -= OnActiveTimeRedraw;
+        activeTimeCheckpoint.Stop();
+        activeTimeCheckpoint.Tick -= OnActiveTimeCheckpoint;
+
+        // Shutdown must not lose the last edits — including the part of the active task's segment
+        // that has run since the last tick, which is why this comes before the flush.
+        workspaces.CheckpointActiveTime();
         workspaces.Flush();
         store.Dispose();
         disposed = true;
@@ -784,8 +867,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         UpdateTitle();
 
-        // The rows are new objects, so the badges have to be put back onto them.
+        // The rows are new objects, so the badges and the timers have to be put back onto them.
         RefreshBadges();
+        RefreshActiveTimes();
     }
 
     private void UpdateTitle()
@@ -969,6 +1053,29 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             NotificationRaised?.Invoke(this, NewestLabel());
         }
     }
+
+    /// <summary>Pushes the current per-task totals onto the rows.</summary>
+    /// <remarks>
+    /// Called from the end of <see cref="Rebuild"/> as well as from the tick, for the same reason
+    /// <see cref="RefreshBadges"/> is: a rebuild throws away every row object, and windows appear
+    /// and disappear constantly, so a value pushed only by the tick would blank out within seconds.
+    /// </remarks>
+    private void RefreshActiveTimes()
+    {
+        Guid? running = workspaces.IsUserAway ? null : workspaces.State.ActiveTaskId;
+
+        foreach (TaskViewModel task in Tasks)
+        {
+            TimeSpan total = workspaces.ActiveTimeOf(task.Id);
+            task.ActiveTimeText = ActiveTimeFormat.Clock(total);
+            task.ActiveTimeTooltip = ActiveTimeFormat.Tooltip(total, task.Id == running);
+        }
+    }
+
+    private void OnActiveTimeRedraw(object? sender, EventArgs e) => RefreshActiveTimes();
+
+    private void OnActiveTimeCheckpoint(object? sender, EventArgs e) =>
+        workspaces.CheckpointActiveTime();
 
     private string NewestLabel()
     {
