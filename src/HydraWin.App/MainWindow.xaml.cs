@@ -144,23 +144,35 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Del deletes the task currently switched to.
+    /// Del deletes the task currently switched to; F2 opens its name for renaming.
     /// </summary>
     /// <remarks>
-    /// Guarded twice. While a rename box has focus, Del is a text edit and must stay one — losing
-    /// the task instead of a character would be a nasty surprise. While a pick is running the
-    /// pointer is mid-gesture and the key belongs to that.
+    /// Guarded twice, and both guards matter for either key. While a rename box has focus the keys
+    /// are text edits and must stay ones — losing the task instead of a character would be a nasty
+    /// surprise, and F2 there would only re-arm a rename that is already open. While a pick is
+    /// running the pointer is mid-gesture and the key belongs to that.
     /// </remarks>
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
 
-        if (e.Key == Key.Delete
-            && !DragDropSupport.IsWithin<TextBox>(e.OriginalSource)
-            && picker?.IsPicking != true)
+        if (!DragDropSupport.IsWithin<TextBox>(e.OriginalSource) && picker?.IsPicking != true)
         {
-            viewModel.DeleteActiveTaskCommand.Execute(null);
-            e.Handled = true;
+            switch (e.Key)
+            {
+                case Key.Delete:
+                    viewModel.DeleteActiveTaskCommand.Execute(null);
+                    e.Handled = true;
+                    break;
+
+                case Key.F2:
+                    viewModel.BeginRenameActiveTaskCommand.Execute(null);
+                    e.Handled = true;
+                    break;
+
+                default:
+                    break;
+            }
         }
 
         base.OnPreviewKeyDown(e);

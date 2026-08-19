@@ -70,6 +70,7 @@ window** — not on delete, not on exit, not on a crash.
 | Click the crosshair, then drag over the desktop | Grab any window on screen into that task |
 | Right-click a window row | Focus · Unassign · Move to ▸ · Edit re-attach rule… |
 | Right-click a task row | Switch to this task · Rename · Reset time · Delete · Delete and Close |
+| `F2` | Rename the active task in place (`Enter` commits, `Esc` abandons) |
 | `Del` | Delete the active task (its windows are un-hidden, never closed) |
 
 **Delete** un-hides the task's windows and returns them to Unassigned; it never closes anything.

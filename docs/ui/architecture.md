@@ -147,9 +147,16 @@ rendered frame. What buries the window is the switch *ending* by raising the tas
 
 ## Keyboard
 
-`Del` deletes the **active** task — the list has no selection, since clicking a row switches to it,
-so the accent-bordered active task is the only sensible target. It is ignored while a `TextBox` has
-focus (or `Del` would eat the task instead of a character mid-rename) and while a pick is running.
+`Del` deletes the **active** task and `F2` opens its name for renaming — the list has no selection,
+since clicking a row switches to it, so the accent-bordered active task is the only sensible target
+for either. Both are ignored while a `TextBox` has focus (or `Del` would eat the task instead of a
+character mid-rename, and `F2` would re-arm a rename that is already open) and while a pick is
+running.
+
+`F2` needed no focus work of its own. It only raises `TaskViewModel.IsRenaming`, which makes the
+row's box visible, and everything below — `IsVisibleChanged` → `FocusRenameBox` — is the path the
+right-click **Rename** already took. The `pendingRenameTaskId` detour is not involved either: that
+exists for the create-a-task case, where a rebuild regenerates the row before the flag could stick.
 
 Deleting asks for confirmation **only when the task holds windows**. The dialog exists to say what
 becomes of them; with none open it has nothing to say and only costs a keystroke.

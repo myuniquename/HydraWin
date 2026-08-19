@@ -663,6 +663,28 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         DeleteTask(active);
     }
 
+    /// <summary>
+    /// Opens the inline rename on whichever task is currently switched to. Bound to the F2 key.
+    /// </summary>
+    /// <remarks>
+    /// The target is the active task for the same reason <see cref="DeleteActiveTask"/> uses it:
+    /// the list has no selection, so the accent-bordered row is the only unambiguous one. Raising
+    /// the flag is the whole job — the row's box is already bound to it, and becoming visible is
+    /// what pulls focus into it.
+    /// </remarks>
+    [RelayCommand]
+    public void BeginRenameActiveTask()
+    {
+        TaskViewModel? active = Tasks.FirstOrDefault(t => t.IsActive);
+        if (active is null)
+        {
+            Say("No task is active — click one first, or use its right-click menu.");
+            return;
+        }
+
+        active.IsRenaming = true;
+    }
+
     /// <summary>Switches to a task: hides every other task's windows and restores this one's.</summary>
     /// <remarks>
     /// The keyboard deliberately stays with HydraWin. This is the click-in-the-panel path, so the

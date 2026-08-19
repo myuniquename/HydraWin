@@ -8,7 +8,7 @@ and crosshair, with the window rows beneath each](../images/task-rows.png)
 | Element | Behaviour |
 | --- | --- |
 | Task row, clicked | Switches to that task; HydraWin keeps the keyboard |
-| Task row, double-clicked name | Inline rename. Enter commits, Esc abandons, any click elsewhere commits |
+| Task row, double-clicked name | Inline rename — `F2` opens the same box on the active task. Enter commits, Esc abandons, any click elsewhere commits |
 | Task row, dragged | Reorders; `Order` is renumbered from 1 across the whole list |
 | Expander | Shows or hides the task's window rows |
 | Colour chip | The task's accent, from `ColorHex` |
@@ -18,7 +18,7 @@ and crosshair, with the window rows beneath each](../images/task-rows.png)
 | `N win` | How many windows the task holds |
 | Crosshair | Press and drag onto any window on screen to add it to this task |
 | Window row, dragged | Assigns to a task, or unassigns when dropped on the right-hand pane |
-| Task row, right-clicked | Switch to this task · Rename · Reset time · Delete · Delete and Close. **Delete** hands the windows back to Unassigned and closes nothing; **Delete and Close** asks each of them to close first and deletes the task only if they all went — see [../workspaces/architecture.md](../workspaces/architecture.md#delete-and-close) |
+| Task row, right-clicked | Switch to this task · Rename (`F2`) · Reset time · Delete (`Del`) · Delete and Close. **Delete** hands the windows back to Unassigned and closes nothing; **Delete and Close** asks each of them to close first and deletes the task only if they all went — see [../workspaces/architecture.md](../workspaces/architecture.md#delete-and-close) |
 | Window row, right-clicked | Focus · Unassign · Move to · Edit re-attach rule… |
 | Unassigned pane | Every managed window belonging to no task. These stay visible through every switch |
 
@@ -33,6 +33,7 @@ rule…](../images/window-menu.png)
 
 | Key | Effect |
 | --- | --- |
+| `F2` | Opens the inline rename on the active task. Ignored while a text box has focus or a pick is running |
 | `Del` | Deletes the active task. Ignored while a text box has focus or a pick is running. Confirmation only when the task holds windows |
 | `Enter` | Commits an inline rename |
 | `Esc` | Abandons an inline rename; cancels a pick |

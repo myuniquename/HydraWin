@@ -139,9 +139,11 @@
                     <ContextMenu Opened="OnTaskMenuOpened">
                         <MenuItem Header="_Switch to this task" Click="OnSwitchToTaskClick" />
                         <Separator />
-                        <MenuItem Header="_Rename" Click="OnRenameTaskClick" />
+                        <MenuItem Header="_Rename" InputGestureText="F2"
+                                  Click="OnRenameTaskClick" />
                         <MenuItem Header="Reset _time" Click="OnResetTaskTimeClick" />
-                        <MenuItem Header="_Delete" Click="OnDeleteTaskClick" />
+                        <MenuItem Header="_Delete" InputGestureText="Del"
+                                  Click="OnDeleteTaskClick" />
                         <MenuItem Header="Delete and _Close"
                                   Click="OnDeleteAndCloseTaskClick" />
                     </ContextMenu>
