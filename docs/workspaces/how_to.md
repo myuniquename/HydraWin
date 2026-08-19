@@ -103,6 +103,37 @@ To zero one by hand instead, close HydraWin and set the task's `ActiveSeconds` t
 
 **Verify:** the row reads `00:00:00` and stops moving, and the tooltip reads `Never switched to`.
 
+## Finish a task and close its windows
+
+Right-click the task row and choose **Delete and Close**. It asks each of the task's windows to
+close — the same request the title-bar × makes, never a force-quit — and deletes the task only if
+they all actually went.
+
+The dialog always appears when the task holds windows, because this is the one command that can
+lose unsaved work. A task with no windows deletes straight away.
+
+If an application puts up a "Save changes?" prompt and you dismiss it with *Cancel*, **nothing is
+deleted**: the task stays, holding the windows that are left, and the status bar says how many
+refused. Answer the prompt and run the command again. Windows that survived are left visible rather
+than re-hidden; the next switch puts them back.
+
+**Drill it** with two throwaway windows — one that closes normally, and one that refuses. A
+PowerShell WinForms window whose `FormClosing` sets `$e.Cancel = $true` is the cheapest stand-in for
+an unanswered save prompt, and it refuses forever, so the drill is not a race:
+
+1. Put both windows in a scratch task, then switch to a different task so they are hidden. Confirm
+   `journal.json` lists both.
+2. **Delete and Close** the scratch task. Both windows come back *before* anything is asked to
+   close — that is what makes a save prompt reachable. The cooperative one goes; the stubborn one
+   stays, visible.
+3. Expect the task still in the list, the status bar reading *"…" kept — 1 of 2 window(s) did not
+   close*, and **`journal.json` back to `[]`** — nothing hidden, no orphan entry for the window that
+   closed.
+4. Let the stubborn window close, and repeat. The task disappears, the status bar reports the count,
+   `journal.json` is `[]`, and `state.json` no longer lists the task.
+5. Answer the confirmation with **No** instead, and nothing at all happens: no window is un-hidden,
+   the journal entry is untouched, the task stays.
+
 ## Teach HydraWin about a stubborn application
 
 Symptoms and what they mean:

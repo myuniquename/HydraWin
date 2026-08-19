@@ -9,8 +9,8 @@ HydraWin's window inventory, task model, switching and crash recovery.
 
 | Doc | Read it for |
 | --- | --- |
-| [architecture.md](architecture.md) | Which windows are managed and why, the journal-before-hide invariant, the switch algorithm, how time on task is counted and paused, per-application behaviour, why OS virtual desktops were rejected |
-| [how_to.md](how_to.md) | Running the crash drill, drilling the away-pause, recovering when the UI will not start, hand-editing the model, resetting a task's timer, teaching HydraWin about a stubborn application |
+| [architecture.md](architecture.md) | Which windows are managed and why, the journal-before-hide invariant, the switch algorithm, how time on task is counted and paused, what *Delete and Close* does and why it shows before it closes, per-application behaviour, why OS virtual desktops were rejected |
+| [how_to.md](how_to.md) | Running the crash drill, drilling the away-pause, recovering when the UI will not start, hand-editing the model, resetting a task's timer, finishing a task and closing its windows, teaching HydraWin about a stubborn application |
 | [reference.md](reference.md) | `state.json` and `journal.json` schemas, the `--restore-all` command line, hotkey defaults, filter verdicts, file locations |
 
 Related: [../notifications/README.md](../notifications/README.md) for how a hidden window asks for

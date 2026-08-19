@@ -18,7 +18,7 @@ and crosshair, with the window rows beneath each](../images/task-rows.png)
 | `N win` | How many windows the task holds |
 | Crosshair | Press and drag onto any window on screen to add it to this task |
 | Window row, dragged | Assigns to a task, or unassigns when dropped on the right-hand pane |
-| Task row, right-clicked | Switch to this task · Rename · Reset time · Delete |
+| Task row, right-clicked | Switch to this task · Rename · Reset time · Delete · Delete and Close. **Delete** hands the windows back to Unassigned and closes nothing; **Delete and Close** asks each of them to close first and deletes the task only if they all went — see [../workspaces/architecture.md](../workspaces/architecture.md#delete-and-close) |
 | Window row, right-clicked | Focus · Unassign · Move to · Edit re-attach rule… |
 | Unassigned pane | Every managed window belonging to no task. These stay visible through every switch |
 
@@ -161,8 +161,8 @@ a `SystemColors` *`ColorKey`* rather than a literal. The templates that consume 
 | `TabStripBackgroundBrush` · `TabItemHoverBackgroundBrush` · `TabItemSelectedBackgroundBrush` | The settings dialog's tabs |
 
 Outside the palette on purpose: the eight per-task colours in `state.json` (user data), the picker
-overlay's transparent background (load-bearing for `WS_EX_LAYERED`), the delete-task `MessageBox`
-and the tray balloon (both drawn by Windows).
+overlay's transparent background (load-bearing for `WS_EX_LAYERED`), the two delete-task
+`MessageBox`es and the tray balloon (all drawn by Windows).
 
 ## Process lifecycle
 

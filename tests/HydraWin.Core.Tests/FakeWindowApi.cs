@@ -23,6 +23,13 @@ internal sealed class FakeWindowApi : IWindowApi
     /// </summary>
     internal HashSet<nint> RefuseToHide { get; } = [];
 
+    /// <summary>
+    /// Handles that stay open after <see cref="RequestClose"/>. Covers both real cases: an
+    /// application that ignores <c>WM_CLOSE</c>, and one that answers it with a save prompt the
+    /// user has not dealt with yet.
+    /// </summary>
+    internal HashSet<nint> RefuseToClose { get; } = [];
+
     /// <summary>Whichever handle <see cref="TryFocus"/> last landed on.</summary>
     internal nint FocusedWindow { get; private set; }
 
@@ -107,6 +114,25 @@ internal sealed class FakeWindowApi : IWindowApi
 
         w.Visible = false;
         return new ShowWindowResult(true, 0);
+    }
+
+    public bool RequestClose(nint hwnd)
+    {
+        Calls.Add($"RequestClose(0x{hwnd:X})");
+        if (!windows.ContainsKey(hwnd))
+        {
+            return false;
+        }
+
+        if (RefuseToClose.Contains(hwnd))
+        {
+            // The post succeeded; the application simply did not act on it. That distinction is
+            // the whole reason the caller has to look at the window afterwards.
+            return true;
+        }
+
+        windows.Remove(hwnd);
+        return true;
     }
 
     public bool TryFocus(nint hwnd)

@@ -142,6 +142,8 @@
                         <MenuItem Header="_Rename" Click="OnRenameTaskClick" />
                         <MenuItem Header="Reset _time" Click="OnResetTaskTimeClick" />
                         <MenuItem Header="_Delete" Click="OnDeleteTaskClick" />
+                        <MenuItem Header="Delete and _Close"
+                                  Click="OnDeleteAndCloseTaskClick" />
                     </ContextMenu>
                 </Border.ContextMenu>
 

@@ -51,6 +51,7 @@ public partial class MainWindow : Window
         viewModel = new MainViewModel(journal, restoreService)
         {
             ConfirmDelete = ConfirmDelete,
+            ConfirmDeleteAndClose = ConfirmDeleteAndClose,
         };
 
         DataContext = viewModel;
@@ -178,6 +179,22 @@ public partial class MainWindow : Window
             "Delete task",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+    /// <summary>
+    /// Asks before deleting a task and closing its windows. <see cref="MessageBoxImage.Warning"/>
+    /// rather than the question mark its neighbour uses: this is the one command in HydraWin that
+    /// can lose the user's unsaved work, and the wording has to say exactly how far it goes.
+    /// </summary>
+    private bool ConfirmDeleteAndClose(TaskViewModel task) =>
+        MessageBox.Show(
+            this,
+            $"Delete “{task.Name}” and close its windows?\n\n"
+                + $"Its {task.WindowCount} window(s) will be asked to close, exactly as if you "
+                + "clicked each window's close button. No application is force-quit.\n\n"
+                + "If any window refuses — an unsaved-changes prompt, say — nothing is deleted.",
+            "Delete task and close its windows",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning) == MessageBoxResult.Yes;
 
     // ------------------------------------------------------------------ dragging
 
@@ -611,6 +628,9 @@ public partial class MainWindow : Window
 
     private void OnDeleteTaskClick(object sender, RoutedEventArgs e) =>
         viewModel.DeleteTaskCommand.Execute(menuTask);
+
+    private void OnDeleteAndCloseTaskClick(object sender, RoutedEventArgs e) =>
+        viewModel.DeleteAndCloseTaskCommand.Execute(menuTask);
 
     private void OnResetTaskTimeClick(object sender, RoutedEventArgs e) =>
         viewModel.ResetTaskTimeCommand.Execute(menuTask);

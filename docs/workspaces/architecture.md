@@ -186,6 +186,33 @@ for the same reason.
 Deleting a task shows its hidden windows *first*, then unassigns them. **Deletion never closes a
 window.**
 
+### Delete and Close
+
+The task menu's second deletion command asks the task's windows to close and then deletes it. The
+close is `PostMessage(WM_CLOSE)` — the same request the title-bar × makes. **No process is ever
+terminated and there is no forceful fallback**: an application that wants to argue about unsaved
+changes gets to, and wins.
+
+The windows are shown *before* anything is asked to close, for two independent reasons. An
+application may answer the close with a modal "Save changes?" dialog owned by the window, which the
+user would never find behind a hidden owner. And showing goes through `RestoreService`, which clears
+each window's journal entry — so a window that then dies leaves nothing on the books, rather than an
+orphan entry that only `OnWindowDisappeared` or a full `RestoreAll` would sweep up.
+
+The message is **posted, never sent**. That save prompt runs a message loop of its own, so
+`SendMessageW` would block HydraWin's UI thread until the user answered it, and would block forever
+against a wedged application. The consequence is that the call reports nothing useful: `false` means
+UIPI refused the post, and `true` means only that the message was queued — measured against a window
+whose `FormClosing` cancels, the post returns `true` and the window is still there two seconds later.
+So the caller posts, gives the applications up to two seconds, and looks: `RequestCloseTask` returns
+the handles it asked, and `StillOpen` says which are left.
+
+Deletion is then **all or nothing**. If any window survives, nothing is deleted — the task stays,
+holding the assignments of the windows that did close, now unbound and waiting to re-attach. A
+half-deleted task is exactly the state in which work goes missing. Survivors are left *visible*
+rather than re-hidden: taking a window away while its save prompt is up would be a poor trade, and
+the next switch puts it back where it belongs.
+
 ## The safety nets, in one place
 
 | Net | When it runs | What it does |

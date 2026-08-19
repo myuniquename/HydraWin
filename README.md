@@ -69,8 +69,14 @@ window** — not on delete, not on exit, not on a crash.
 | Drag a window row to the right pane | Unassign it |
 | Click the crosshair, then drag over the desktop | Grab any window on screen into that task |
 | Right-click a window row | Focus · Unassign · Move to ▸ · Edit re-attach rule… |
-| Right-click a task row | Switch to this task · Rename · Delete |
+| Right-click a task row | Switch to this task · Rename · Reset time · Delete · Delete and Close |
 | `Del` | Delete the active task (its windows are un-hidden, never closed) |
+
+**Delete** un-hides the task's windows and returns them to Unassigned; it never closes anything.
+**Delete and Close** asks each of them to close first — the same request the title-bar × makes, with
+no process ever force-quit — and deletes the task only if they all actually went. If any window
+refuses, an unsaved-changes prompt being the usual reason, nothing is deleted and the row tells you
+how many are left.
 
 Rows tell you what is going on: a grey **hidden** chip means HydraWin currently has that window
 hidden, and an orange **won't hide** chip means the hide was refused — the runtime safety net for a

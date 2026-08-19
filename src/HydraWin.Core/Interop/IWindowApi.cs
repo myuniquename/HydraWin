@@ -49,6 +49,19 @@ public interface IWindowApi
     ShowWindowResult Show(nint hwnd);
 
     /// <summary>
+    /// Asks a window to close, exactly as its title-bar close button would. A request, never a
+    /// kill: no process is terminated and there is no forceful fallback.
+    /// </summary>
+    /// <remarks>
+    /// The message is posted rather than sent, because an application may answer it with a modal
+    /// "Save changes?" dialog running its own message loop — sending would block HydraWin until
+    /// the user answered. So the result says only whether the message was queued
+    /// (<see langword="false"/> is UIPI refusing); whether the window actually goes away has to be
+    /// looked at afterwards with <see cref="IsWindow"/>.
+    /// </remarks>
+    bool RequestClose(nint hwnd);
+
+    /// <summary>
     /// Brings a window to the foreground, reporting whether focus actually landed. Only valid
     /// while HydraWin is itself the foreground process — see the implementation's remarks.
     /// </summary>

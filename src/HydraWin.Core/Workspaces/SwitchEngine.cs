@@ -227,7 +227,8 @@ public sealed class SwitchEngine
 
     /// <summary>
     /// Deletes a task, showing any of its windows that are hidden <em>first</em>. Deletion never
-    /// closes a window: the user gets them all back, unassigned.
+    /// closes a window: the user gets them all back, unassigned. To close them instead, see
+    /// <see cref="RequestCloseTask"/>.
     /// </summary>
     public IReadOnlyList<WindowAssignment> DeleteTask(Guid taskId)
     {
@@ -240,6 +241,57 @@ public sealed class SwitchEngine
         ShowAll([.. task.BoundAssignments.Where(a => a.BoundHwnd is nint h && hiddenWindows.Contains(h))]);
 
         return workspaces.DeleteTask(taskId);
+    }
+
+    /// <summary>
+    /// Shows the task's hidden windows and then asks each of its windows to close, as the
+    /// title-bar close button would. Returns the handles that were asked, for the caller to look
+    /// at afterwards. Deletes nothing and terminates nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The windows are shown <em>first</em>, and both halves of that matter. An application may
+    /// answer the close with a modal "Save changes?" dialog owned by the window, which the user
+    /// would never find behind a hidden owner. And showing goes through
+    /// <see cref="RestoreService"/>, which clears each window's journal entry — so a window that
+    /// then dies leaves nothing on the books, rather than an orphaned entry waiting for
+    /// <see cref="OnWindowDisappeared"/> to sweep it up.
+    /// </para>
+    /// <para>
+    /// Closing is a request, so this method cannot report what happened. The caller gives the
+    /// applications a moment and then asks <see cref="StillOpen"/>.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<nint> RequestCloseTask(Guid taskId)
+    {
+        HydraWinTask? task = workspaces.FindTask(taskId);
+        if (task is null)
+        {
+            return [];
+        }
+
+        ShowAll([.. task.BoundAssignments.Where(a => a.BoundHwnd is nint h && hiddenWindows.Contains(h))]);
+
+        // Read the bindings again: showing drops any that turned out to be dead, and there is
+        // nothing to ask of a window that is already gone.
+        List<nint> asked = [.. task.BoundAssignments.Select(a => a.BoundHwnd).OfType<nint>()];
+        foreach (nint hwnd in asked)
+        {
+            windowApi.RequestClose(hwnd);
+        }
+
+        return asked;
+    }
+
+    /// <summary>
+    /// Which of these handles are still live windows. The answer to
+    /// <see cref="RequestCloseTask"/>, once the applications have had their moment.
+    /// </summary>
+    public IReadOnlyList<nint> StillOpen(IEnumerable<nint> handles)
+    {
+        ArgumentNullException.ThrowIfNull(handles);
+
+        return [.. handles.Where(windowApi.IsWindow)];
     }
 
     /// <summary>

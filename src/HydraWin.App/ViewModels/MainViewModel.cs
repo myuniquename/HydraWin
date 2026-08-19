@@ -65,6 +65,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </remarks>
     private static readonly TimeSpan ActiveTimeCheckpointInterval = TimeSpan.FromMinutes(1);
 
+    /// <summary>How long <em>Delete and Close</em> waits for the windows to go.</summary>
+    /// <remarks>
+    /// Closing is a request, not a call, so the only way to learn what happened is to look. Two
+    /// seconds is long enough for an application that is going to close to have gone, and short
+    /// enough that a save prompt — which will never close on its own — is reported promptly. The
+    /// wait ends early the moment nothing is left, so the ordinary case costs one poll.
+    /// </remarks>
+    private static readonly TimeSpan CloseGrace = TimeSpan.FromSeconds(2);
+
+    /// <summary>How often that wait looks.</summary>
+    /// <remarks>
+    /// Deliberately not the tracker's two-second reconciliation sweep: this asks
+    /// <c>IsWindow</c> about a handful of handles, which is cheap, and the user is waiting.
+    /// </remarks>
+    private static readonly TimeSpan ClosePollInterval = TimeSpan.FromMilliseconds(100);
+
     private readonly DispatcherTimer activeTimeRedraw;
     private readonly DispatcherTimer activeTimeCheckpoint;
     private Guid? pendingRenameTaskId;
@@ -399,6 +415,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public Func<TaskViewModel, bool>? ConfirmDelete { get; set; }
 
     /// <summary>
+    /// Asks the user to confirm deleting a task <em>and closing its windows</em>. Set by the view,
+    /// for the same reason as <see cref="ConfirmDelete"/>: this is the one command in HydraWin
+    /// that can lose unsaved work, so the wording carries most of the safety.
+    /// </summary>
+    public Func<TaskViewModel, bool>? ConfirmDeleteAndClose { get; set; }
+
+    /// <summary>
     /// The user left the machine or came back. Fed from the session listener in the App layer,
     /// which is the only thing that knows this arrived as a window message.
     /// </summary>
@@ -523,14 +546,101 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        IReadOnlyList<WindowAssignment> orphaned = switchEngine.DeleteTask(task.Id);
-        SyncHiddenFlags();
-        Rebuild();
+        IReadOnlyList<WindowAssignment> orphaned = DeleteConfirmed(task);
 
         Say(orphaned.Count == 0
             ? $"Deleted “{task.Name}”."
             : $"Deleted “{task.Name}”. {orphaned.Count} window(s) returned to Unassigned, "
                 + "none closed.");
+    }
+
+    /// <summary>
+    /// Deletes a task that the user has already agreed to lose, and refreshes the rows. Split out
+    /// so <see cref="DeleteAndCloseTask"/> can reuse it without asking a second question.
+    /// </summary>
+    private IReadOnlyList<WindowAssignment> DeleteConfirmed(TaskViewModel task)
+    {
+        IReadOnlyList<WindowAssignment> orphaned = switchEngine.DeleteTask(task.Id);
+        SyncHiddenFlags();
+        Rebuild();
+        return orphaned;
+    }
+
+    /// <summary>
+    /// Closes every window in a task and then deletes it — but only if they all actually went.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Close" here is the same request the title-bar close button makes. No process is ever
+    /// terminated and there is no forceful fallback: an application that wants to argue about
+    /// unsaved changes gets to.
+    /// </para>
+    /// <para>
+    /// Which is why this is all-or-nothing. If any window is still standing when the grace period
+    /// runs out, <em>nothing</em> is deleted: a half-deleted task is exactly the state in which
+    /// work goes missing. The user answers the prompt and runs the command again. The survivors
+    /// are left visible rather than re-hidden — taking a window away while its save prompt is up
+    /// would be a poor trade — and the next switch puts them back where they belong.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    public async Task DeleteAndCloseTask(TaskViewModel? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        if (task.WindowCount == 0)
+        {
+            // Nothing to close, and nothing a warning could tell the user.
+            DeleteTask(task);
+            return;
+        }
+
+        if (ConfirmDeleteAndClose?.Invoke(task) == false)
+        {
+            return;
+        }
+
+        IReadOnlyList<nint> asked = switchEngine.RequestCloseTask(task.Id);
+        SyncHiddenFlags();
+        Rebuild();
+
+        IReadOnlyList<nint> survivors = await WaitForClose(asked).ConfigureAwait(true);
+        if (survivors.Count > 0)
+        {
+            Say($"“{task.Name}” kept — {survivors.Count} of {asked.Count} window(s) did not "
+                + "close. Look for an unsaved-changes prompt, then try again.");
+            return;
+        }
+
+        DeleteConfirmed(task);
+        Say($"Closed {asked.Count} window(s) and deleted “{task.Name}”.");
+    }
+
+    /// <summary>
+    /// Gives the applications their moment, and reports which windows are still there.
+    /// </summary>
+    /// <remarks>
+    /// Awaited rather than slept, so the UI stays alive — and so the tracker's own events, which
+    /// need the dispatcher, get to run while the windows are closing.
+    /// </remarks>
+    private async Task<IReadOnlyList<nint>> WaitForClose(IReadOnlyList<nint> asked)
+    {
+        IReadOnlyList<nint> survivors = asked;
+        for (TimeSpan waited = TimeSpan.Zero; waited < CloseGrace; waited += ClosePollInterval)
+        {
+            await Task.Delay(ClosePollInterval).ConfigureAwait(true);
+
+            survivors = switchEngine.StillOpen(survivors);
+            if (survivors.Count == 0)
+            {
+                break;
+            }
+        }
+
+        return survivors;
     }
 
     /// <summary>

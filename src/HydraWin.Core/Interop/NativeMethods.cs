@@ -213,6 +213,13 @@ internal static partial class NativeMethods
     internal const int SW_SHOW = 5;
     internal const int SW_SHOWNA = 8;
 
+    /// <summary>
+    /// The message the title-bar close button sends. It is a request: the application decides what
+    /// to do with it, up to and including putting a "Save changes?" prompt on screen and never
+    /// closing at all.
+    /// </summary>
+    private const uint WM_CLOSE = 0x0010;
+
     private const int MaxProcessPathLength = 1024;
 
     /// <summary><c>SPI_GETHIGHCONTRAST</c>, and the flag in the struct it fills.</summary>
@@ -326,6 +333,10 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "IsWindow")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool IsWindowCore(nint hWnd);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool PostMessageCore(nint hWnd, uint msg, nint wParam, nint lParam);
 
     [LibraryImport("user32.dll", EntryPoint = "SetForegroundWindow")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -637,6 +648,27 @@ internal static partial class NativeMethods
 
     /// <summary>Shows a window and reports whether it actually came back.</summary>
     internal static ShowWindowResult Show(nint hwnd) => Apply(hwnd, SW_SHOW, wantVisible: true);
+
+    /// <summary>
+    /// Asks a window to close, exactly as its title-bar close button would. Never terminates a
+    /// process.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>WM_CLOSE</c> is <em>posted</em>, not sent. An application may answer it by opening a
+    /// modal "Save changes?" dialog, which runs a message loop of its own; <c>SendMessageW</c>
+    /// would block the calling thread until the user answered, and would block forever against a
+    /// wedged application. Posting hands the message over and returns.
+    /// </para>
+    /// <para>
+    /// That is also why the return value says so little. <see langword="false"/> means the post
+    /// itself was refused — in practice UIPI, a window that became elevated after HydraWin first
+    /// saw it. <see langword="true"/> means only that the message was queued: whether the window
+    /// goes away is up to the application, and the caller has to look afterwards.
+    /// </para>
+    /// </remarks>
+    internal static bool RequestClose(nint hwnd) =>
+        hwnd != 0 && PostMessageCore(hwnd, WM_CLOSE, 0, 0);
 
     /// <summary>
     /// Issues a show command and checks the result against reality rather than trusting the
