@@ -256,6 +256,56 @@ public sealed class ActiveTimeLedgerTests
     }
 
     [Fact]
+    public void ResettingEveryTaskZeroesEveryTotalAndKeepsTheClockRunningOnTheActiveOne()
+    {
+        ledger.SetActive(beta.Id);
+        Run(TimeSpan.FromMinutes(20));
+        ledger.SetActive(alpha.Id);
+        Run(TimeSpan.FromHours(3));
+
+        ledger.ResetAll([alpha.Id, beta.Id]);
+
+        Assert.Equal(TimeSpan.Zero, ledger.TotalFor(alpha.Id));
+        Assert.Equal(TimeSpan.Zero, ledger.TotalFor(beta.Id));
+        Assert.Equal(0, alpha.ActiveSeconds);
+        Assert.Equal(0, beta.ActiveSeconds);
+
+        Run(TimeSpan.FromMinutes(1));
+        Assert.Equal(TimeSpan.FromMinutes(1), ledger.TotalFor(alpha.Id));
+        Assert.Equal(TimeSpan.Zero, ledger.TotalFor(beta.Id));
+    }
+
+    [Fact]
+    public void ResettingEveryTaskDropsTheSubSecondRemaindersRatherThanLettingThemResurface()
+    {
+        // Sub-second slices live in the ledger's remainder, not in ActiveSeconds. Clearing the
+        // model alone would leave them behind, and the next sample would round them up into a
+        // total the user was told had gone.
+        ledger.SetActive(alpha.Id);
+        for (int i = 0; i < 3; i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(400));
+            ledger.Sample();
+        }
+
+        ledger.ResetAll([alpha.Id, beta.Id]);
+        Assert.Equal(TimeSpan.Zero, ledger.TotalFor(alpha.Id));
+
+        clock.Advance(TimeSpan.FromMilliseconds(400));
+        ledger.Sample();
+
+        Assert.Equal(0, alpha.ActiveSeconds);
+    }
+
+    [Fact]
+    public void ResettingEveryTaskIsHarmlessWhenThereAreNoTasksToReset()
+    {
+        ledger.ResetAll([]);
+
+        Assert.Equal(TimeSpan.Zero, ledger.TotalFor(alpha.Id));
+    }
+
+    [Fact]
     public void AHandEditedNegativeTotalReadsAsZeroRatherThanAsNegativeTime()
     {
         alpha.ActiveSeconds = -600;

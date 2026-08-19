@@ -396,6 +396,52 @@ public sealed class WorkspaceServiceTests : IDisposable
     }
 
     [Fact]
+    public void ResettingEveryTimerClearsAllOfThemAndLeavesTheActiveOneCounting()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        HydraWinTask beta = service.CreateTask("Beta");
+
+        service.SetActiveTask(beta.Id);
+        clock.Advance(TimeSpan.FromMinutes(7));
+        service.SetActiveTask(alpha.Id);
+        clock.Advance(TimeSpan.FromMinutes(3));
+        service.CheckpointActiveTime();
+
+        service.ResetAllActiveTime();
+
+        Assert.Equal(TimeSpan.Zero, service.ActiveTimeOf(alpha.Id));
+        Assert.Equal(TimeSpan.Zero, service.ActiveTimeOf(beta.Id));
+
+        // The reset clears what was recorded; it does not stop the clock.
+        clock.Advance(TimeSpan.FromMinutes(1));
+        service.CheckpointActiveTime();
+
+        Assert.Equal(TimeSpan.FromMinutes(1), service.ActiveTimeOf(alpha.Id));
+        Assert.Equal(TimeSpan.Zero, service.ActiveTimeOf(beta.Id));
+    }
+
+    [Fact]
+    public void ResettingEveryTimerIsWrittenOut()
+    {
+        HydraWinTask alpha = service.CreateTask("Alpha");
+        HydraWinTask beta = service.CreateTask("Beta");
+
+        service.SetActiveTask(beta.Id);
+        clock.Advance(TimeSpan.FromMinutes(4));
+        service.SetActiveTask(alpha.Id);
+        clock.Advance(TimeSpan.FromMinutes(4));
+        service.CheckpointActiveTime();
+
+        service.ResetAllActiveTime();
+        service.Flush();
+
+        using var reopenedStore = new WorkspaceStore(store.Path, TimeSpan.FromMinutes(5));
+        var reopened = new WorkspaceService(reopenedStore);
+
+        Assert.All(reopened.State.Tasks, task => Assert.Equal(0, task.ActiveSeconds));
+    }
+
+    [Fact]
     public void TheTaskThatWasActiveAtTheLastExitPicksItsClockBackUpOnLaunch()
     {
         HydraWinTask alpha = service.CreateTask("Alpha");

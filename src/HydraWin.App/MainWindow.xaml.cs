@@ -7,6 +7,7 @@ using HydraWin.App.Themes;
 using HydraWin.App.ViewModels;
 using HydraWin.Core.Interop;
 using HydraWin.Core.Recovery;
+using HydraWin.Core.Workspaces;
 
 // The view layer works in WPF's device-independent points; only the picker speaks Win32's.
 using Point = System.Windows.Point;
@@ -52,6 +53,7 @@ public partial class MainWindow : Window
         {
             ConfirmDelete = ConfirmDelete,
             ConfirmDeleteAndClose = ConfirmDeleteAndClose,
+            ConfirmResetAllTimers = ConfirmResetAllTimers,
         };
 
         DataContext = viewModel;
@@ -205,6 +207,23 @@ public partial class MainWindow : Window
                 + "clicked each window's close button. No application is force-quit.\n\n"
                 + "If any window refuses — an unsaved-changes prompt, say — nothing is deleted.",
             "Delete task and close its windows",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning) == MessageBoxResult.Yes;
+
+    /// <summary>
+    /// Asks before clearing every task's timer. The per-task <b>Reset time</b> asks nothing at
+    /// all, and should not: one counter is cheap to lose and readable back out of the log. Every
+    /// counter at once is neither, so this one warns, and spells out the exact total so the user
+    /// can see what the click costs.
+    /// </summary>
+    private bool ConfirmResetAllTimers(int taskCount, TimeSpan total) =>
+        MessageBox.Show(
+            this,
+            $"Reset the timer on all {taskCount} task(s)?\n\n"
+                + $"{ActiveTimeFormat.Clock(total)} of recorded time will be cleared. No window is "
+                + "touched, and the clock keeps running on the active task.\n\n"
+                + "This cannot be undone, but the discarded total is written to the log first.",
+            "Reset all timers",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning) == MessageBoxResult.Yes;
 

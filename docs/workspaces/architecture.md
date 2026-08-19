@@ -371,6 +371,23 @@ Time data stays out of `journal.json`. That file is flushed on the hide hot path
 is exactly one thing — which windows are hidden. Unrelated payload would slow the invariant and
 blur what recovery is promising.
 
+### Clearing a timer goes through the ledger, never through the model
+
+Both resets — `ResetActiveTime` for one task, `ResetAllActiveTime` for every task — call
+`ActiveTimeLedger`, which samples first and then drops the sub-second remainder alongside the total.
+Zeroing `HydraWinTask.ActiveSeconds` directly would look identical for a second and then be wrong:
+the remainder and the open segment are held by the ledger, so the next sample would round them up
+into a figure the user had just been told was gone. The bulk reset clears every remainder at once,
+including any stranded by a task deleted mid-segment.
+
+Neither reset stops the clock. Clearing the active task's figure is "start counting again from
+now", not "stop counting", and it leaves `ActiveTaskId` untouched — so it is not an accounting
+boundary and does not go anywhere near `SetActiveTask`.
+
+The two differ only in what the UI puts in front of them: the per-task reset asks nothing, the
+bulk one asks first. That asymmetry is a UI judgement about how much is at stake, not a rule about
+the data — see [../ui/reference.md](../ui/reference.md).
+
 ### The credit clamp is what makes a missing suspend harmless
 
 A single sample can never credit more than `MaxCreditPerSample`, two minutes. That is the fallback

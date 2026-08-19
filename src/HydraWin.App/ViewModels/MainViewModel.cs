@@ -422,6 +422,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public Func<TaskViewModel, bool>? ConfirmDeleteAndClose { get; set; }
 
     /// <summary>
+    /// Asks the user to confirm clearing <em>every</em> task's timer, given how many tasks are
+    /// about to be cleared and the total that will be discarded. Set by the view, for the same
+    /// reason as <see cref="ConfirmDelete"/>; the two numbers are passed in so the view still owns
+    /// nothing but the wording.
+    /// </summary>
+    public Func<int, TimeSpan, bool>? ConfirmResetAllTimers { get; set; }
+
+    /// <summary>
     /// The user left the machine or came back. Fed from the session listener in the App layer,
     /// which is the only thing that knows this arrived as a window message.
     /// </summary>
@@ -455,11 +463,46 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        // Said before it is cleared, so the discarded figure is recoverable from the log.
-        string cleared = task.ActiveTimeText.Length == 0 ? "nothing" : task.ActiveTimeText;
+        // Read before it is cleared, so the discarded figure is recoverable from the log.
+        string cleared = task.ActiveTimeText;
         workspaces.ResetActiveTime(task.Id);
         RefreshActiveTimes();
         Say($"Reset the timer on “{task.Name}” — {cleared} cleared.");
+    }
+
+    /// <summary>
+    /// Clears every task's accumulated time. The clock keeps running on the active task.
+    /// </summary>
+    /// <remarks>
+    /// Confirmed, where its per-task sibling is not: one counter is cheap to lose and cheap to
+    /// read back out of the log, but every counter at once is neither.
+    /// </remarks>
+    [RelayCommand]
+    public void ResetAllTimers()
+    {
+        TimeSpan total = TimeSpan.Zero;
+        foreach (TaskViewModel task in Tasks)
+        {
+            total += workspaces.ActiveTimeOf(task.Id);
+        }
+
+        // Nothing to warn about, and nothing worth a write — the same rule that lets DeleteTask
+        // skip its prompt for a task holding no windows.
+        if (total <= TimeSpan.Zero)
+        {
+            Say("No task has any recorded time — nothing to reset.");
+            return;
+        }
+
+        if (ConfirmResetAllTimers?.Invoke(Tasks.Count, total) == false)
+        {
+            return;
+        }
+
+        // Said with the figure that was discarded, so it is recoverable from the log.
+        workspaces.ResetAllActiveTime();
+        RefreshActiveTimes();
+        Say($"Reset every timer — {Tasks.Count} task(s), {ActiveTimeFormat.Clock(total)} cleared.");
     }
 
     /// <summary>Starts tracking. Must be called on the dispatcher thread.</summary>

@@ -295,7 +295,10 @@
                 <CheckBox Content="Stay on top" IsChecked="{Binding AlwaysOnTop}"
                           VerticalAlignment="Center" Margin="16,0,0,0"
                           ToolTip="Keep HydraWin above other windows, so a switch does not bury it" />
-                <Button Content="Settings…" Padding="10,3" Margin="16,0,0,0"
+                <Button Content="Reset all timers" Command="{Binding ResetAllTimersCommand}"
+                        Padding="10,3" Margin="16,0,0,0"
+                        ToolTip="Clear the time-on-task figure on every task. Asks first" />
+                <Button Content="Settings…" Padding="10,3" Margin="8,0,0,0"
                         Click="OnSettingsClick"
                         ToolTip="Hotkeys, notification rules and general behaviour" />
             </StackPanel>

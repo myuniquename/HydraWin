@@ -92,16 +92,27 @@ exit code.
 
    **Verify:** at most one minute was lost, and no other task's figure moved.
 
-## Reset a task's timer
+## Reset a timer
 
-Right-click the task row and choose **Reset time**. There is no confirmation — it is a counter,
-not data — but the figure that was discarded is written to the log first, so it can be read back
-out of `%APPDATA%\HydraWin\logs\hydrawin.log` if it was cleared by accident.
+**One task:** right-click the task row and choose **Reset time**. There is no confirmation — it is
+a counter, not data — but the figure that was discarded is written to the log first, so it can be
+read back out of `%APPDATA%\HydraWin\logs\hydrawin.log` if it was cleared by accident.
+
+**Every task:** click **Reset all timers** in the toolbar. This one *does* ask, naming how many
+tasks it will clear and the exact total about to go, because a single misclick would otherwise
+discard every recorded figure at once. The discarded total is written to the log the same way. When
+nothing has been recorded yet there is nothing to warn about, so no dialog appears and the status
+bar says so.
+
+Neither reset stops the clock: the active task starts counting again from zero straight away, and
+neither touches a window.
 
 To zero one by hand instead, close HydraWin and set the task's `ActiveSeconds` to `0` in
 `state.json`. Deleting the property entirely reads as `0` as well.
 
-**Verify:** the row reads `00:00:00` and stops moving, and the tooltip reads `Never switched to`.
+**Verify:** the row reads `00:00:00`, the tooltip on any task that is not the active one reads
+`Never switched to`, and after the next minute's checkpoint only the active task's figure has
+moved.
 
 ## Finish a task and close its windows
 

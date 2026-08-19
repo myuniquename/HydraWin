@@ -175,6 +175,34 @@ public sealed class ActiveTimeLedger
     }
 
     /// <summary>
+    /// Zeroes every listed task's lifetime total. The clock keeps running on the active one.
+    /// </summary>
+    /// <param name="taskIds">
+    /// Supplied by the caller because the ledger cannot enumerate tasks — it resolves them one at a
+    /// time through its <c>findTask</c> delegate, and that is the seam on purpose.
+    /// </param>
+    public void ResetAll(IEnumerable<Guid> taskIds)
+    {
+        ArgumentNullException.ThrowIfNull(taskIds);
+
+        // Sampled first for the same reason Reset does: the segment in flight is closed at this
+        // instant rather than surviving into the cleared totals.
+        Sample();
+
+        // Every total is going to zero, so every remainder goes with it — including any left behind
+        // by a task that no longer resolves.
+        carryMs.Clear();
+
+        foreach (Guid id in taskIds)
+        {
+            if (findTask(id) is HydraWinTask task)
+            {
+                task.ActiveSeconds = 0;
+            }
+        }
+    }
+
+    /// <summary>
     /// A task's lifetime total, including the remainder and the segment currently in flight.
     /// </summary>
     /// <remarks>

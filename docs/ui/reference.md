@@ -14,7 +14,7 @@ and crosshair, with the window rows beneath each](../images/task-rows.png)
 | Colour chip | The task's accent, from `ColorHex` |
 | Activity marker | The strongest live Claude Code marker among the task's windows, visible even when the task is collapsed |
 | Badge | Count of windows waiting for attention; clicking it switches, focuses the newest and clears it |
-| Time on task | How long this task has been the switched-to one, `HH:mm:ss`, redrawn every second. Shown on every row, including the ones still at `00:00:00` — the seconds moving on one row and standing still on the others is how you can see it is running. Hours accumulate rather than rolling into days, so a long-lived task reads `137:05:00`. Hovering gives the same total in words plus whether the clock is counting right now. Right-click → **Reset time** clears it |
+| Time on task | How long this task has been the switched-to one, `HH:mm:ss`, redrawn every second. Shown on every row, including the ones still at `00:00:00` — the seconds moving on one row and standing still on the others is how you can see it is running. Hours accumulate rather than rolling into days, so a long-lived task reads `137:05:00`. Hovering gives the same total in words plus whether the clock is counting right now. Right-click → **Reset time** clears this one without asking; the toolbar's **Reset all timers** clears every task and asks first |
 | `N win` | How many windows the task holds |
 | Crosshair | Press and drag onto any window on screen to add it to this task |
 | Window row, dragged | Assigns to a task, or unassigns when dropped on the right-hand pane |
@@ -96,6 +96,23 @@ place and does not disturb the live binding — the rule says how to recognise t
 An invalid regex blocks Save with an inline error here, and is saved-but-disabled in the
 notification editor; the reasoning is in
 [architecture.md](architecture.md#settings-and-rule-dialogs).
+
+### Confirmations
+
+Plain `MessageBox` dialogs owned by the view, one method each in `MainWindow.xaml.cs`, handed to
+`MainViewModel` as `Func<…, bool>` so the wording lives with the view and a view model with no
+delegate proceeds. They are drawn by user32 and are the one part of the shell the theme does not
+reach — see [architecture.md](architecture.md#colours-that-are-not-in-the-palette).
+
+| Asked by | Icon | Skipped when |
+| --- | --- | --- |
+| Delete a task | Question | The task holds no windows — nothing to say about them |
+| Delete and Close | Warning | The task holds no windows — it falls through to the plain delete |
+| Reset all timers | Warning | No task has recorded any time — nothing to clear, so the command returns having done nothing |
+
+**Reset time** on a single task asks nothing at all. One counter is cheap to lose and the figure is
+written to the log before it goes; every counter at once is not, which is the only reason the
+toolbar button has a dialog and the menu item does not.
 
 ## Tray menu
 

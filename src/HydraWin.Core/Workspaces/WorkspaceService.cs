@@ -472,6 +472,25 @@ public sealed class WorkspaceService
     }
 
     /// <summary>
+    /// Zeroes every task's lifetime active time. The clock keeps running on the active one.
+    /// </summary>
+    /// <remarks>
+    /// The bulk sibling of <see cref="ResetActiveTime"/>, and it goes through the ledger for the
+    /// same reason: zeroing <see cref="HydraWinTask.ActiveSeconds"/> here instead would leave the
+    /// ledger's sub-second remainders behind, and they would surface again on the next sample.
+    /// </remarks>
+    public void ResetAllActiveTime()
+    {
+        lock (gate)
+        {
+            ledger.ResetAll([.. State.Tasks.Select(task => task.Id)]);
+        }
+
+        Persist();
+        Raise(TasksChanged);
+    }
+
+    /// <summary>
     /// Remembers the window the user was last working in, so switching back can restore focus
     /// there. Ignores windows that belong to no task.
     /// </summary>

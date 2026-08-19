@@ -69,8 +69,9 @@ public sealed partial class TaskViewModel : ObservableObject
     public partial string ActivityGlyph { get; set; } = string.Empty;
 
     /// <summary>
-    /// Lifetime time this task has been the active one, formatted for the row. Empty when the
-    /// task has never been switched to, which collapses the cell.
+    /// Lifetime time this task has been the active one, formatted for the row. Always populated
+    /// once the rows have been refreshed — a task never switched to reads <c>00:00:00</c> rather
+    /// than blank, because a standing clock beside moving ones is what shows the timing is live.
     /// </summary>
     [ObservableProperty]
     public partial string ActiveTimeText { get; set; } = string.Empty;
