@@ -876,6 +876,36 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         Say("Task order updated.");
     }
 
+    /// <summary>
+    /// Moves a window within its own task so that it sits above <paramref name="before"/>, or to
+    /// the bottom of the task when that is <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// The rows speak in window handles and the model in assignment ids, so the translation happens
+    /// here — through <see cref="WorkspaceService.FindAssignmentOf"/>, the same door the rule editor
+    /// uses. Naming the destination by the row it lands above rather than by an index is what keeps
+    /// the two lists honest: the rows are only the task's <em>bound</em> assignments, so a task
+    /// holding a rule for a closed window has more assignments than rows.
+    /// </remarks>
+    public void MoveWindowBefore(WindowViewModel? dragged, WindowViewModel? before)
+    {
+        if (dragged is null || workspaces.FindAssignmentOf(dragged.Hwnd) is not WindowAssignment moving)
+        {
+            return;
+        }
+
+        Guid? anchor = before is null ? null : workspaces.FindAssignmentOf(before.Hwnd)?.Id;
+        if (before is not null && anchor is null)
+        {
+            return;
+        }
+
+        if (workspaces.ReorderAssignment(moving.Id, anchor))
+        {
+            Say($"“{dragged.DisplayTitle}” moved — the top of a task's list ends on top on a switch.");
+        }
+    }
+
     /// <summary>The task a window row currently belongs to, or <see langword="null"/>.</summary>
     public TaskViewModel? TaskOf(WindowViewModel window)
     {

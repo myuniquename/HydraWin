@@ -172,7 +172,9 @@ names and string enums. Close HydraWin first — it is the only writer, and it s
 so a running instance will overwrite you.
 
 Useful edits: renaming a task, reordering by changing `Order` (renumber from 1 — the
-`Ctrl+Alt+1..9` hotkeys address tasks by it), widening a `TitlePattern`, switching `Appearance`
+`Ctrl+Alt+1..9` hotkeys address tasks by it), reordering a task's windows by moving objects within
+its `Assignments` array (nothing to renumber, and the first entry is the one that ends on top after
+a switch), widening a `TitlePattern`, switching `Appearance`
 between `"System"`, `"Light"` and `"Dark"`, or clearing `Hotkeys` and `NotificationRules` to `[]` so
 the shipped defaults are seeded again on next launch.
 

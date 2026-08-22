@@ -366,20 +366,9 @@ public partial class MainWindow : Window
 
         if (e.Data.GetDataPresent(DragDropSupport.WindowFormat))
         {
-            FrameworkElement? row =
-                DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.TaskRowTag);
-            if (row is null)
-            {
-                indicator.Clear();
-                return;
-            }
-
-            e.Effects = DragDropEffects.Move;
-            indicator.Highlight(row);
-            return;
+            ShowWindowDrop(e);
         }
-
-        if (e.Data.GetDataPresent(DragDropSupport.TaskFormat))
+        else if (e.Data.GetDataPresent(DragDropSupport.TaskFormat))
         {
             ShowTaskInsertion(e);
         }
@@ -388,6 +377,74 @@ public partial class MainWindow : Window
             indicator.Clear();
         }
     }
+
+    /// <summary>
+    /// A window drag carries two meanings, told apart by whose row is under the pointer: inside its
+    /// own task it reorders — an insertion line, because that order is the stack a switch restores
+    /// — and over any other task it moves, with the drop outline that has always meant "goes here".
+    /// </summary>
+    /// <remarks>
+    /// Over its own task but not over one of its window rows there is no position to drop into, and
+    /// that is refused rather than guessed at — the same choice a task dragged onto a window row
+    /// makes. The bottom of the list is still reachable: it is the lower half of the last row.
+    /// </remarks>
+    private void ShowWindowDrop(DragEventArgs e)
+    {
+        FrameworkElement? taskRow =
+            DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.TaskRowTag);
+        TaskViewModel? owner = DraggedMember(e.Data)?.Task;
+
+        if (ReorderAnchor(e, owner) is FrameworkElement anchorRow)
+        {
+            e.Effects = DragDropEffects.Move;
+            indicator.Insertion(anchorRow, below: IsBelowMidpoint(e, anchorRow));
+            return;
+        }
+
+        if (taskRow is null || ReferenceEquals(taskRow.DataContext, owner))
+        {
+            indicator.Clear();
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        indicator.Highlight(taskRow);
+    }
+
+    /// <summary>The dragged window and the task it belongs to, when it belongs to one.</summary>
+    private (WindowViewModel Window, TaskViewModel Task)? DraggedMember(IDataObject data)
+    {
+        if (WindowFrom(data) is not WindowViewModel window)
+        {
+            return null;
+        }
+
+        return viewModel.TaskOf(window) is TaskViewModel task ? (window, task) : null;
+    }
+
+    /// <summary>
+    /// The window row a reorder would be measured against, or <see langword="null"/> when the
+    /// pointer is not over a window row of <paramref name="owner"/>.
+    /// </summary>
+    /// <remarks>
+    /// The window row is looked for <em>first</em>, and that is not a preference: a window row sits
+    /// inside its task's row, so the <c>TaskRow</c> walk matches either way and would swallow every
+    /// reorder.
+    /// </remarks>
+    private static FrameworkElement? ReorderAnchor(DragEventArgs e, TaskViewModel? owner)
+    {
+        if (DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.WindowRowTag)
+            is not { DataContext: WindowViewModel over } row)
+        {
+            return null;
+        }
+
+        return owner is not null && owner.Windows.Contains(over) ? row : null;
+    }
+
+    /// <summary>Whether the pointer is past the halfway line of a row — "goes after this one".</summary>
+    private static bool IsBelowMidpoint(DragEventArgs e, FrameworkElement row) =>
+        e.GetPosition(row).Y > row.ActualHeight / 2;
 
     private void ShowTaskInsertion(DragEventArgs e)
     {
@@ -418,7 +475,7 @@ public partial class MainWindow : Window
         }
 
         e.Effects = DragDropEffects.Move;
-        indicator.Insertion(row, below: e.GetPosition(row).Y > row.ActualHeight / 2);
+        indicator.Insertion(row, below: IsBelowMidpoint(e, row));
     }
 
     private void OnTaskPaneDrop(object sender, DragEventArgs e)
@@ -428,15 +485,62 @@ public partial class MainWindow : Window
 
         if (e.Data.GetDataPresent(DragDropSupport.WindowFormat))
         {
-            FrameworkElement? row =
-                DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.TaskRowTag);
-            viewModel.AssignWindow(WindowFrom(e.Data), row?.DataContext as TaskViewModel);
+            DropWindow(e);
             return;
         }
 
         if (e.Data.GetDataPresent(DragDropSupport.TaskFormat))
         {
             DropTask(e);
+        }
+    }
+
+    /// <summary>
+    /// The two halves of a window drop: a reorder inside its own task, or a move into another one.
+    /// </summary>
+    private void DropWindow(DragEventArgs e)
+    {
+        FrameworkElement? taskRow =
+            DragDropSupport.FindRow(e.OriginalSource, DragDropSupport.TaskRowTag);
+
+        if (DraggedMember(e.Data) is not (WindowViewModel dragged, TaskViewModel owner))
+        {
+            viewModel.AssignWindow(WindowFrom(e.Data), taskRow?.DataContext as TaskViewModel);
+            return;
+        }
+
+        if (ReorderAnchor(e, owner) is { DataContext: WindowViewModel over } anchorRow)
+        {
+            MoveWithin(owner, dragged, over, IsBelowMidpoint(e, anchorRow));
+        }
+        else if (!ReferenceEquals(taskRow?.DataContext, owner))
+        {
+            // Landing on its own task with no row to anchor on falls through to nothing, which is
+            // what ShowWindowDrop promised with the cursor. Re-assigning a window to the task it
+            // already belongs to would rebuild its assignment — new id, rule re-derived from
+            // whatever the title says at this instant — and drop it at the bottom of the order.
+            viewModel.AssignWindow(dragged, taskRow?.DataContext as TaskViewModel);
+        }
+    }
+
+    /// <summary>
+    /// Turns "dropped on the upper or lower half of this row" into the row the dragged window is to
+    /// sit above — or nothing at all, which reads as the bottom of the list.
+    /// </summary>
+    private void MoveWithin(
+        TaskViewModel task,
+        WindowViewModel dragged,
+        WindowViewModel over,
+        bool below)
+    {
+        int index = task.Windows.IndexOf(over) + (below ? 1 : 0);
+        WindowViewModel? anchor = index < task.Windows.Count ? task.Windows[index] : null;
+
+        // Dropped on one of its own edges: the model would refuse this too, but there is no reason
+        // to write the file and rebuild the rows to find that out.
+        if (!ReferenceEquals(anchor, dragged))
+        {
+            viewModel.MoveWindowBefore(dragged, anchor);
         }
     }
 
@@ -458,7 +562,7 @@ public partial class MainWindow : Window
         if (row?.DataContext is TaskViewModel over)
         {
             target = viewModel.Tasks.IndexOf(over);
-            if (e.GetPosition(row).Y > row.ActualHeight / 2)
+            if (IsBelowMidpoint(e, row))
             {
                 target++;
             }

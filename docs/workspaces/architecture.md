@@ -164,19 +164,44 @@ Assignments previously marked `Unmanageable` are still included. The flag record
 refused *once*, not that it always will, so the app heals itself if that process is later restarted
 without elevation. The cost is one failed call per switch.
 
-`SwitchEngine.SwitchTo` then hides, shows, and finally deals with focus — and what it does with
-focus depends on where the switch came from:
+`SwitchEngine.SwitchTo` then hides, shows, stacks, and finally deals with focus.
 
-- **From inside HydraWin's own window** (`focusTarget: false`): the task's windows are *raised*
-  with `SetWindowPos(HWND_TOP, SWP_NOACTIVATE)` but not activated, in reverse order so the
-  last-active one ends on top. The user is driving the panel, and taking the keyboard away would
-  send their next key press — `Del`, in particular — to whichever application was just raised.
+**The order of a task's `Assignments` list is its z-order.** Whatever the user arranged in the panel
+is what the desktop looks like after a switch, first entry in front. `RaiseInListOrder` walks the
+list **backwards**, calling `SetWindowPos(HWND_TOP, SWP_NOACTIVATE)` on each bound window: every
+raise goes above the ones before it, so the last call wins and walking from the bottom leaves the
+first entry on top. Every bound window is raised, not merely the ones this switch had to show — one
+that was already visible still has to take its place.
+
+`LastActiveHwnd` is deliberately **not** hoisted out of that walk. It used to be, and the result was
+a layout that recorded how the user had been working rather than how they had arranged the task —
+alt-tabbing between two windows silently rewrote which one came back on top. It keeps its one job,
+deciding where the keyboard goes, and has no say in the stacking. Nothing else reorders the list
+either: `NoteForegroundWindow` writes that field and nothing more, and a reappearing window re-binds
+the assignment it already had, in the slot it already held.
+
+Because the raise is unconditional, `SwitchTo` being idempotent now means something useful:
+re-selecting the task already running puts a stack the user has since shuffled back the way they
+arranged it.
+
+What is left depends on where the switch came from, and it is only about the keyboard:
+
+- **From inside HydraWin's own window** (`focusTarget: false`): nothing is activated. The user is
+  driving the panel, and taking the keyboard away would send their next key press — `Del`, in
+  particular — to whichever application was just raised. The stack is exactly the list.
 - **From a hotkey or the tray** (`focusTarget: true`): focus lands on the task's last-active
   window, because the user is somewhere else entirely and the point is to land in the task.
+  Activation lifts that window to the very front, which is the one and only difference between the
+  two paths' stacks.
+
+Raising has to happen *before* focusing. Reversed, the `SetWindowPos` calls would push the other
+windows over the one that holds the keyboard.
 
 `SetForegroundWindow` works here only because HydraWin is the foreground process at the moment of a
 user-initiated switch, or holds the input state granted to a hotkey registrant on `WM_HOTKEY`.
-There is deliberately no `AttachThreadInput` workaround for paths where neither is true.
+There is deliberately no `AttachThreadInput` workaround for paths where neither is true. The raise
+itself needs no such rights — `SWP_NOACTIVATE` activates nothing — which is why imposing the order
+on the hotkey path costs nothing and adds no new dependency on being foreground.
 
 Assigning a window to a non-active task hides it immediately, and does so by calling the same
 `HideAll` a switch uses — so the invariant applies on that path without a second implementation of

@@ -10,10 +10,31 @@ Three ways, all ending in the same code path:
 - **Right-click** the row → *Assign to* → the task.
 
 To move a window between tasks, drag it onto the other task or use *Move to*. To take it out
-entirely, drag it back to the unassigned pane, or right-click → *Unassign*.
+entirely, drag it back to the unassigned pane, or right-click → *Unassign*. To move it **within**
+its task, see the next section.
 
 **Verify:** the task's window count goes up and the row leaves the unassigned pane. If the target
 task is not the active one, the window disappears from the screen as it is assigned.
+
+## Order the windows inside a task
+
+Drag a window row up or down **inside its own task**. An insertion line shows where it will land;
+the lower half of the last row means "to the bottom". A drop anywhere on its own task that is not a
+window row does nothing, on purpose — there is no position to read from it.
+
+That order is the layout. On the next switch the task's windows are stacked to match it, top row in
+front. Nothing else moves a row: working in the windows does not, and neither does closing one and
+reopening it — it rejoins in the slot it already held.
+
+**Verify** by switching away and back **twice, once each way**, because the two paths differ:
+
+- **Click the task row.** The stack matches the list exactly, top row in front, and HydraWin keeps
+  the keyboard.
+- **Press `Ctrl+Alt+`*n*.** The same stack, except that focus lands in the window you were last
+  using and Windows lifts what it activates.
+
+Then work in the *bottom* window for a while and switch away and back again: the list has not moved,
+and neither has the stack.
 
 ## Rebind a hotkey
 
@@ -148,8 +169,9 @@ evidence. Run them in both themes and report what was observed.
 5. **Menus.** Both row context menus and the tray menu. *Move to* and *Assign to* are
    `SubmenuHeader`s and are the items most likely to be left light; the separators are the next.
    *Close to tray* must still show its checkmark.
-6. **Gestures.** Drag a window row onto a task (drop outline and wash), drag a task row to reorder
-   (insertion line), and run the crosshair over another window (accent frame).
+6. **Gestures.** Drag a window row onto a task (drop outline and wash), drag a window row within
+   its own task (insertion line), drag a task row to reorder (insertion line), and run the
+   crosshair over another window (accent frame).
 7. **High contrast.** Settings → Accessibility → Contrast themes → *Desert* → Apply. HydraWin
    repaints in that scheme's own colours without a restart, and returns when it is turned off.
 

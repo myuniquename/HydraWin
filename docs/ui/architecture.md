@@ -52,7 +52,7 @@ applies the renaming flag by construction, which holds however many rebuilds hap
 Hand-rolled, in `DragDropSupport.cs`. `GongSolutions.WPF.DragDrop` was considered and declined: a
 task row carries **two mouse semantics on one element** — a click switches to the task, a drag
 reorders it — and Gong takes over `PreviewMouseDown`/`Move` on the controls it attaches to. Its one
-big saving, the default `ObservableCollection` reorder handler, applies to one of the four drop
+big saving, the default `ObservableCollection` reorder handler, applies to one of the five drop
 kinds here.
 
 The two payloads are a window handle and a task id; rows are found by walking the visual tree for a
@@ -64,6 +64,17 @@ tagged ancestor. Details in [reference.md](reference.md#drag-and-drop-contract).
   mouse-down is the moment the user expects to see they have picked something up.
 - A **task row** waits for the movement threshold. A click there switches tasks, so starting on the
   press would make every switch a drag.
+
+**A window drag carries two meanings, chosen by whose row is under the pointer.** Over a window row
+of its *own* task it reorders — an insertion line, because that order is the stack a switch restores
+— and over any other task it moves, with the outline that has always meant "goes here". The window
+row has to be hit-tested *before* the task row, and that is not a preference: a window row sits
+inside its task's row, so the `TaskRow` walk matches either way and would swallow every reorder.
+Over its own task but not over one of its window rows the drop is **refused** rather than guessed
+at, the same choice a task dragged onto a window row makes — and refusing costs nothing, because the
+bottom of the list is reachable as the lower half of the last row. It also avoids a trap: assigning
+a window to the task it already belongs to rebuilds its assignment, with a new id and a rule
+re-derived from whatever the title says at that instant, and lands it at the bottom of the order.
 
 ![A window row mid-drag: the translucent ghost follows the pointer while the task under it is
 outlined as the drop target](../images/drag-drop.png)
@@ -122,14 +133,20 @@ even if it were enumerated.
 
 ## Focus policy
 
-Who gets the keyboard after a switch depends on where the switch came from, and getting this wrong
-is worse than it sounds.
+Every switch stacks the task's windows in the order its rows are listed in, on both paths — see
+*Switching* in [../workspaces/architecture.md](../workspaces/architecture.md). What differs is only
+who gets the keyboard, and getting that wrong is worse than it sounds.
 
 - **A click inside HydraWin** keeps the keyboard with HydraWin. The task's windows are raised with
-  `SetWindowPos(HWND_TOP, SWP_NOACTIVATE)` — in reverse order, so the last-active one ends up on
-  top — but not activated.
+  `SetWindowPos(HWND_TOP, SWP_NOACTIVATE)` but nothing is activated, so the stack is exactly the
+  list.
 - **A hotkey or the tray** hands focus to the task's last-active window. The user is somewhere else
-  entirely and the point is to land in the task.
+  entirely and the point is to land in the task. Activation lifts that window to the front, which
+  is the only way the two paths' stacks differ.
+
+The last-active window has no other influence: it decides the keyboard, never the order. A layout
+that shifted because of which window the user had been in would be a record of their session rather
+than the arrangement they made.
 
 The gap that produced this rule: switching used to end by focusing one of the task's windows, so
 HydraWin was no longer the foreground application and a `Del` pressed straight after clicking a row

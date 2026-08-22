@@ -102,8 +102,10 @@ public sealed class SwitchEngine
     public Action? AfterJournalFlush { get; set; }
 
     /// <summary>
-    /// Hides every other task's windows and brings this task's back. Idempotent: switching to the
-    /// task that is already active just re-asserts visibility and focus.
+    /// Hides every other task's windows and brings this task's back, stacked in the order its
+    /// assignments are listed in. Idempotent: switching to the task that is already active just
+    /// re-asserts visibility, stacking order and focus — which is how a stack the user has since
+    /// shuffled gets put back the way they arranged it.
     /// </summary>
     /// <param name="taskId">The task to switch to.</param>
     /// <param name="focusTarget">
@@ -116,8 +118,8 @@ public sealed class SwitchEngine
     /// <para>
     /// False when the switch came from clicking inside HydraWin's own window. The user is driving
     /// the panel, and taking the keyboard away from it would send their next key press — Del, in
-    /// particular — to whichever app was just raised. The task's windows are still brought to the
-    /// front, they simply are not activated.
+    /// particular — to whichever app was just raised. The task's windows are still stacked in list
+    /// order, they simply are not activated.
     /// </para>
     /// </param>
     public SwitchSummary SwitchTo(Guid taskId, bool focusTarget = true)
@@ -133,13 +135,14 @@ public sealed class SwitchEngine
         (int hiddenCount, int unmanageable) = HideAll(plan.ToHide);
         (int shown, int stale) = ShowAll(plan.ToShow);
 
+        // The task's list order is its layout, and it is imposed on both paths: a hotkey switch and
+        // a click leave the same stack, the second only also moves the keyboard. Raising has to
+        // come first — reversed, it would push other windows over the one holding the keyboard.
+        RaiseInListOrder(target);
+
         if (focusTarget)
         {
             FocusTarget(target, plan.ToShow);
-        }
-        else
-        {
-            RaiseTarget(target);
         }
 
         workspaces.SetActiveTask(taskId);
@@ -451,33 +454,46 @@ public sealed class SwitchEngine
     }
 
     /// <summary>
-    /// Brings the task's windows to the front without taking the keyboard.
+    /// Stacks the task's windows so that its list reads top-to-bottom on screen, without taking
+    /// the keyboard.
     /// </summary>
     /// <remarks>
-    /// Raised in reverse order so the task's last-active window ends up on top — the same window
-    /// <see cref="FocusTarget"/> would have chosen, just not activated.
+    /// <para>
+    /// <see cref="IWindowApi.Raise"/> is <c>SetWindowPos(HWND_TOP, SWP_NOACTIVATE)</c>, so each
+    /// call goes above the ones before it and the <em>last</em> window raised ends on top. The list
+    /// is therefore walked backwards, which leaves the first assignment in front.
+    /// </para>
+    /// <para>
+    /// Strictly the list, with no exception for <see cref="HydraWinTask.LastActiveHwnd"/>. Hoisting
+    /// the window the user happened to be in last would make the layout a trace of how they had
+    /// been working rather than the arrangement they made, which is the one thing this ordering
+    /// exists to prevent. On the focusing paths <c>SetForegroundWindow</c> lifts that window
+    /// anyway — but that is activation, it happens afterwards, and it is the only difference
+    /// between the two paths' stacks.
+    /// </para>
+    /// <para>
+    /// Every bound window of the task is raised, not merely the ones the switch just showed: a
+    /// window that was already visible still has to take its place in the order.
+    /// </para>
     /// </remarks>
-    private void RaiseTarget(HydraWinTask target)
+    private void RaiseInListOrder(HydraWinTask target)
     {
-        List<nint> handles = [.. target.BoundAssignments
-            .Where(a => a.BoundHwnd is not null)
-            .Select(a => a.BoundHwnd!.Value)];
+        List<nint> handles = [.. target.BoundAssignments.Select(a => a.BoundHwnd!.Value)];
 
-        // Whichever window the user was last in belongs on top of its siblings.
-        if (target.LastActiveHwnd is nint last && handles.Remove(last))
+        for (int i = handles.Count - 1; i >= 0; i--)
         {
-            handles.Add(last);
-        }
-
-        foreach (nint hwnd in handles)
-        {
-            windowApi.Raise(hwnd);
+            windowApi.Raise(handles[i]);
         }
     }
 
     /// <summary>
     /// Focuses the task's last-active window, falling back to one it just showed.
     /// </summary>
+    /// <remarks>
+    /// The windows have already been stacked in list order by <see cref="RaiseInListOrder"/>, so
+    /// this decides the keyboard only — and, as a side effect of activation, pulls its pick to the
+    /// very top.
+    /// </remarks>
     private void FocusTarget(HydraWinTask target, IReadOnlyList<WindowAssignment> shown)
     {
         if (target.LastActiveHwnd is nint last && windowApi.TryFocus(last))

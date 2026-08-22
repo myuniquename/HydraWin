@@ -283,21 +283,89 @@ public sealed class SwitchEngineTests : IDisposable
         engine.SwitchTo(alpha.Id, focusTarget: false);
 
         Assert.Equal(0, api.FocusedWindow);
-        Assert.Equal([0x10, 0x11], api.RaisedWindows);
         Assert.False(api.Get(0x20)!.Visible);
+
+        // Backwards, because each raise goes above the ones before it: the list is walked from the
+        // bottom so that its first entry is the one left in front.
+        Assert.Equal([0x11, 0x10], api.RaisedWindows);
     }
 
     [Fact]
-    public void AUiSwitchRaisesTheLastActiveWindowLast()
+    public void TheTopOfATasksListEndsOnTopOfTheScreen()
     {
-        // Last raised is topmost, so the window the user was in ends up in front of its siblings —
-        // the same one FocusTarget would have chosen, just not activated.
-        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11);
-        engine.OnForegroundChanged(0x10);
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11, 0x12);
 
         engine.SwitchTo(alpha.Id, focusTarget: false);
 
-        Assert.Equal(0x10, api.RaisedWindows[^1]);
+        Assert.Equal([0x12, 0x11, 0x10], api.RaisedWindows);
+    }
+
+    [Fact]
+    public void TheLastActiveWindowDoesNotChangeTheOrderTheWindowsAreRaisedIn()
+    {
+        // It used to be hoisted to the front of the stack. That made the layout a trace of how the
+        // user had been working rather than the arrangement they made — which is the one thing the
+        // ordering exists to prevent. Where the keyboard goes is still its business; where the
+        // windows sit is not.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11, 0x12);
+        engine.OnForegroundChanged(0x12);
+
+        engine.SwitchTo(alpha.Id, focusTarget: false);
+
+        Assert.Equal([0x12, 0x11, 0x10], api.RaisedWindows);
+    }
+
+    [Fact]
+    public void ReorderingAWindowChangesTheOrderItIsRaisedIn()
+    {
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11, 0x12);
+        WindowAssignment bottom = alpha.Assignments[2];
+        workspaces.ReorderAssignment(bottom.Id, alpha.Assignments[0].Id);
+
+        engine.SwitchTo(alpha.Id, focusTarget: false);
+
+        Assert.Equal([0x11, 0x10, 0x12], api.RaisedWindows);
+    }
+
+    [Fact]
+    public void AHotkeySwitchImposesTheSameOrderAsAClick()
+    {
+        // The stack is a property of the task, not of how the user got to it. Before this, the
+        // focusing path raised nothing at all and left the stacking to whatever SW_SHOW produced.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11, 0x12);
+        engine.OnForegroundChanged(0x11);
+
+        engine.SwitchTo(alpha.Id);
+
+        Assert.Equal([0x12, 0x11, 0x10], api.RaisedWindows);
+        Assert.Equal(0x11, api.FocusedWindow);
+    }
+
+    [Fact]
+    public void TheWindowsAreRaisedBeforeTheKeyboardIsGiven()
+    {
+        // Reversed, the raises would push the other windows over the one holding the keyboard.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11);
+
+        engine.SwitchTo(alpha.Id);
+
+        Assert.True(
+            api.Calls.FindLastIndex(c => c.StartsWith("Raise(", StringComparison.Ordinal))
+                < api.Calls.FindIndex(c => c.StartsWith("Focus(", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void EveryBoundWindowIsRaisedEvenWhenNoneWasHidden()
+    {
+        // Switching to the task that is already active shows nothing, and still has to put the
+        // stack back the way the user arranged it.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10, 0x11);
+        engine.SwitchTo(alpha.Id, focusTarget: false);
+        api.RaisedWindows.Clear();
+
+        engine.SwitchTo(alpha.Id, focusTarget: false);
+
+        Assert.Equal([0x11, 0x10], api.RaisedWindows);
     }
 
     [Fact]

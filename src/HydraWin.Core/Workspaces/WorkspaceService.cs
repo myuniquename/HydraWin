@@ -58,7 +58,9 @@ public sealed class WorkspaceService
         ledger.SetActive(State.ActiveTaskId);
     }
 
-    /// <summary>A task was created, renamed, deleted or reordered.</summary>
+    /// <summary>
+    /// A task was created, renamed, deleted or reordered, or had its windows reordered.
+    /// </summary>
     public event EventHandler? TasksChanged;
 
     /// <summary>A window was assigned to a task by the user.</summary>
@@ -275,6 +277,79 @@ public sealed class WorkspaceService
 
         Persist();
         Raise(TasksChanged);
+    }
+
+    /// <summary>
+    /// Moves an assignment within its own task so that it sits immediately before
+    /// <paramref name="beforeAssignmentId"/>, or at the end of the task when that is
+    /// <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The order of <see cref="HydraWinTask.Assignments"/> is the task's layout: a switch restores
+    /// the windows stacked in exactly that order, first entry on top. So this is an edit to the
+    /// document, persisted like any other, and not a view preference. Nothing else reorders the
+    /// list — working in the windows moves <see cref="HydraWinTask.LastActiveHwnd"/> and nothing
+    /// more, and a reappearing window re-binds the assignment it already had, in place.
+    /// </para>
+    /// <para>
+    /// The destination is named by the assignment the moved one lands in front of, rather than by
+    /// an index. The rows the user drags are only the <em>bound</em> assignments, so a task holding
+    /// a rule for a window that is currently closed has more assignments than rows, and a row index
+    /// would mean something different on each side of the boundary. An anchor means the same thing
+    /// to both. Unbound assignments keep their slots and simply end up before or after the moved
+    /// one; when their window reappears it takes whichever slot it holds.
+    /// </para>
+    /// </remarks>
+    /// <returns>Whether anything actually moved.</returns>
+    public bool ReorderAssignment(Guid assignmentId, Guid? beforeAssignmentId)
+    {
+        lock (gate)
+        {
+            if (beforeAssignmentId == assignmentId
+                || !taskByAssignmentId.TryGetValue(assignmentId, out HydraWinTask? task))
+            {
+                return false;
+            }
+
+            int current = task.Assignments.FindIndex(a => a.Id == assignmentId);
+            if (current < 0)
+            {
+                return false;
+            }
+
+            int destination = task.Assignments.Count;
+            if (beforeAssignmentId is Guid anchorId)
+            {
+                destination = task.Assignments.FindIndex(a => a.Id == anchorId);
+
+                // An anchor belonging to some other task says nothing about where this one goes.
+                if (destination < 0)
+                {
+                    return false;
+                }
+            }
+
+            // The destination was named with the moved assignment still in place; taking it out
+            // shifts everything after it up by one.
+            if (current < destination)
+            {
+                destination--;
+            }
+
+            if (current == destination)
+            {
+                return false;
+            }
+
+            WindowAssignment moving = task.Assignments[current];
+            task.Assignments.RemoveAt(current);
+            task.Assignments.Insert(destination, moving);
+        }
+
+        Persist();
+        Raise(TasksChanged);
+        return true;
     }
 
     /// <summary>Removes a window's assignment entirely — the rule goes with it.</summary>

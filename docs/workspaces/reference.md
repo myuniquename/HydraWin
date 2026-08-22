@@ -50,6 +50,7 @@ with `UnsafeRelaxedJsonEscaping` so they stay readable and hand-editable.
 | `Tasks[].ColorHex` | Row accent, `#RRGGBB` |
 | `Tasks[].Order` | 1-based position. **Load-bearing**: `Ctrl+Alt+1..9` address tasks by it, so renumber from 1 when editing by hand |
 | `Tasks[].ActiveSeconds` | Lifetime seconds this task has been the switched-to one. Absent in a document written before the feature existed, which reads as 0. A negative value — only a hand-edit can produce one — reads as 0 rather than as negative time |
+| `Tasks[].Assignments` | Array **order is load-bearing**: it is the task's window order in the panel and the z-order a switch restores, the first entry ending on top. The task's last-active window has no say in it |
 | `Assignments[].Id` | Stable identity; also the payload of a drag |
 | `Rule.ProcessFileName` | Image file name only, compared case-insensitively. The full path changes when an application updates |
 | `Rule.TitlePattern` | Substring, or a regex when `TitleIsRegex` is set. Empty matches any title of that process |

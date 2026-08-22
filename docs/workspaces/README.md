@@ -24,8 +24,9 @@ durable **re-attach rule** — a process image name plus a title pattern — so 
 task when it, or HydraWin, is restarted; window handles mean nothing across runs.
 
 Switching to a task hides the windows of every *other* task with `ShowWindow(SW_HIDE)` and restores
-this task's with `SetWindowPlacement` + `SW_SHOW`. Hidden means gone: no taskbar button, no
-Alt-Tab. That is the point, and it is also the risk, because a window nobody can see is a window
+this task's with `SetWindowPlacement` + `SW_SHOW`, stacked in the order the task lists them so that
+its top row ends in front. Hidden means gone: no taskbar button, no Alt-Tab. That is the point, and
+it is also the risk, because a window nobody can see is a window
 the user cannot recover by hand. Every hide is therefore written to a journal on disk *first*, so
 that whatever happens next — a crash, a power cut, a kill from Task Manager — there is a record of
 what to put back and where.
