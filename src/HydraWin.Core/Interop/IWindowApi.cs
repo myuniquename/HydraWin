@@ -68,6 +68,14 @@ public interface IWindowApi
     bool TryFocus(nint hwnd);
 
     /// <summary>
+    /// Restores a minimized window, maximized again if that is how it was minimized. A window
+    /// that is not minimized is left as it is, and so is a hidden one: restoring a window also
+    /// shows it, and a hidden window comes back only through <c>RestoreService</c>, which clears
+    /// its journal entry.
+    /// </summary>
+    void RestoreIfMinimized(nint hwnd);
+
+    /// <summary>
     /// Brings a window to the front of the z-order without activating it, so the keyboard stays
     /// where it is. Used when the switch was driven from HydraWin's own UI.
     /// </summary>

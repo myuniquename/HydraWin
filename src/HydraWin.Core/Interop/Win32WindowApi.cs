@@ -47,5 +47,8 @@ public sealed class Win32WindowApi : IWindowApi
     public bool TryFocus(nint hwnd) => NativeMethods.TryFocus(hwnd);
 
     /// <inheritdoc />
+    public void RestoreIfMinimized(nint hwnd) => NativeMethods.RestoreIfMinimized(hwnd);
+
+    /// <inheritdoc />
     public void Raise(nint hwnd) => NativeMethods.Raise(hwnd);
 }

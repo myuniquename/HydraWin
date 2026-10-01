@@ -153,8 +153,9 @@ public sealed class SwitchEngine
     }
 
     /// <summary>
-    /// Switches to whichever task owns this window and focuses that window specifically. Backs the
-    /// UI's <em>Focus</em> command, and in task 09 the click-to-jump on a notification badge.
+    /// Switches to whichever task owns this window and focuses that window specifically, restoring
+    /// it first if it is minimized. Backs the UI's <em>Focus</em> command and its double-click, and
+    /// in task 09 the click-to-jump on a notification badge.
     /// </summary>
     /// <returns>The switch summary, or <see langword="default"/> if the window belongs to no task.</returns>
     public SwitchSummary SwitchToWindow(nint hwnd)
@@ -164,14 +165,14 @@ public sealed class SwitchEngine
         {
             // Unassigned windows are visible in every task, so there is nothing to switch to —
             // focusing it is the whole of the job.
-            windowApi.TryFocus(hwnd);
+            FocusNamed(hwnd);
             return default;
         }
 
         // Focus this window rather than the task's last-active one: the user named it.
         owner.LastActiveHwnd = hwnd;
         SwitchSummary summary = SwitchTo(owner.Id);
-        windowApi.TryFocus(hwnd);
+        FocusNamed(hwnd);
         return summary;
     }
 
@@ -516,5 +517,26 @@ public sealed class SwitchEngine
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// Focuses a window the user named, restoring it first if it is minimized.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only for a named window. A task switch leaves a minimized window minimized: that is how the
+    /// user left it, and they did not ask for that window in particular.
+    /// </para>
+    /// <para>
+    /// On the switching path this runs after <see cref="SwitchTo"/>, never before. Until the switch
+    /// has shown the window it may still be hidden, and the restore leaves a hidden window alone.
+    /// The window can also come back minimized from the switch itself, because the journaled
+    /// placement puts back a minimized window exactly as it was.
+    /// </para>
+    /// </remarks>
+    private void FocusNamed(nint hwnd)
+    {
+        windowApi.RestoreIfMinimized(hwnd);
+        windowApi.TryFocus(hwnd);
     }
 }

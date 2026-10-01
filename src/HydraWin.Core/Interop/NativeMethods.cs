@@ -212,6 +212,7 @@ internal static partial class NativeMethods
     internal const int SW_HIDE = 0;
     internal const int SW_SHOW = 5;
     internal const int SW_SHOWNA = 8;
+    internal const int SW_RESTORE = 9;
 
     /// <summary>
     /// The message the title-bar close button sends. It is a request: the application decides what
@@ -329,6 +330,10 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "ShowWindow", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ShowWindowCore(nint hWnd, int nCmdShow);
+
+    [LibraryImport("user32.dll", EntryPoint = "IsIconic")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsIconicCore(nint hWnd);
 
     [LibraryImport("user32.dll", EntryPoint = "IsWindow")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -629,6 +634,33 @@ internal static partial class NativeMethods
 
         SetForegroundWindowCore(hwnd);
         return GetForegroundWindowCore() == hwnd;
+    }
+
+    /// <summary>
+    /// Restores a minimized window to the size it had before, maximized again if that is how it
+    /// was minimized. Does nothing to a window that is not minimized.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="TryFocus"/> alone is not enough for a minimized window: <c>SetForegroundWindow</c>
+    /// activates it where it is, on the taskbar, and <c>GetForegroundWindow</c> then reports
+    /// success all the same.
+    /// </para>
+    /// <para>
+    /// A window that is not visible is left alone, even if it is minimized. <c>SW_RESTORE</c> also
+    /// <em>shows</em> a window, and a hidden one here is one HydraWin hid. Its way back goes
+    /// through <c>RestoreService</c>, which checks its identity and clears its journal entry.
+    /// Restoring it here would put it on screen with the entry still on disk.
+    /// </para>
+    /// </remarks>
+    internal static void RestoreIfMinimized(nint hwnd)
+    {
+        if (!TryGetIdentity(hwnd, out _, out bool visible) || !visible || !IsIconicCore(hwnd))
+        {
+            return;
+        }
+
+        ShowWindowCore(hwnd, SW_RESTORE);
     }
 
     /// <summary>

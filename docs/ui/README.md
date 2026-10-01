@@ -25,8 +25,9 @@ outlined in its accent colour](../images/main-window-dark.png)
 One window, two panes: tasks on the left, unassigned windows on the right. A task row expands to
 show its windows, carries a colour chip, a live activity marker, a notification badge and a
 crosshair picker. Clicking a row switches to that task. Dragging a window row onto a task assigns
-it; dragging a window row within its own task reorders that task's windows, and that order is the
-stack the next switch restores; dragging a task row reorders the tasks.
+it; double-clicking a window row jumps straight to that window; dragging a window row within its own
+task reorders that task's windows, and that order is the stack the next switch restores; dragging a
+task row reorders the tasks.
 
 Around that: a tray icon that survives the window being closed, global hotkeys that work when the
 UI does not, a settings dialog, a per-assignment rule editor, and a crash handler whose job is to

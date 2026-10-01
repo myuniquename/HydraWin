@@ -425,6 +425,63 @@ public sealed class SwitchEngineTests : IDisposable
         Assert.Equal(0x99, api.FocusedWindow);
     }
 
+    [Fact]
+    public void FocusingAMinimizedUnassignedWindowRestoresItThenFocusesIt()
+    {
+        // SetForegroundWindow alone activates a minimized window where it sits, on the taskbar.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        engine.SwitchTo(alpha.Id);
+        api.Add(0x99, pid: 99, path: AppPath, visible: true).Minimized = true;
+
+        engine.SwitchToWindow(0x99);
+
+        Assert.False(api.Get(0x99)!.Minimized);
+        Assert.Equal(0x99, api.FocusedWindow);
+        Assert.Contains("Restore(0x99)", api.Calls);
+        Assert.True(api.Calls.IndexOf("Restore(0x99)") < api.Calls.LastIndexOf("Focus(0x99)"));
+    }
+
+    [Fact]
+    public void FocusingAMinimizedWindowOfAnotherTaskRestoresItAfterTheSwitchShowsIt()
+    {
+        // It was minimized when it was hidden, and the journaled placement brings it back that
+        // way. Restoring before the switch would find it still hidden and, rightly, leave it alone.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        HydraWinTask beta = TaskWith("Beta", 0x20, 0x21);
+        api.Get(0x21)!.Minimized = true;
+        engine.SwitchTo(alpha.Id);
+        api.Calls.Clear();
+
+        engine.SwitchToWindow(0x21);
+
+        Assert.Equal(beta.Id, workspaces.State.ActiveTaskId);
+        Assert.False(api.Get(0x21)!.Minimized);
+        Assert.Equal(0x21, api.FocusedWindow);
+
+        int shown = api.Calls.IndexOf("Show(0x21)");
+        int restored = api.Calls.IndexOf("Restore(0x21)");
+        Assert.True(shown >= 0 && shown < restored);
+        Assert.True(restored < api.Calls.LastIndexOf("Focus(0x21)"));
+    }
+
+    [Fact]
+    public void FocusingAWindowThatRefusedToShowLeavesItHidden()
+    {
+        // Restoring a window also shows it. One the switch could not bring back is still hidden
+        // and still journaled, and only RestoreService may put it back on screen.
+        HydraWinTask alpha = TaskWith("Alpha", 0x10);
+        TaskWith("Beta", 0x20);
+        api.Get(0x20)!.Minimized = true;
+        engine.SwitchTo(alpha.Id);
+        api.RefuseToShow.Add(0x20);
+
+        engine.SwitchToWindow(0x20);
+
+        Assert.False(api.Get(0x20)!.Visible);
+        Assert.True(api.Get(0x20)!.Minimized);
+        Assert.Contains(0x20, journal.Snapshot().Select(e => e.Hwnd));
+    }
+
     /// <summary>A live window on the fake desktop, not yet in any task.</summary>
     private TrackedWindow LooseWindow(nint hwnd)
     {

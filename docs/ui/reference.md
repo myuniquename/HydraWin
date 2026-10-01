@@ -17,9 +17,10 @@ and crosshair, with the window rows beneath each](../images/task-rows.png)
 | Time on task | How long this task has been the switched-to one, `HH:mm:ss`, redrawn every second. Shown on every row, including the ones still at `00:00:00` — the seconds moving on one row and standing still on the others is how you can see it is running. Hours accumulate rather than rolling into days, so a long-lived task reads `137:05:00`. Hovering gives the same total in words plus whether the clock is counting right now. Right-click → **Reset time** clears this one without asking; the toolbar's **Reset all timers** clears every task and asks first |
 | `N win` | How many windows the task holds |
 | Crosshair | Press and drag onto any window on screen to add it to this task |
+| Window row, double-clicked | Switches to its task and lands the keyboard in that window — the same as right-click → *Focus*. A minimized window is restored first, and comes back maximized if it was maximized when it was minimized. Works in the Unassigned pane too, where there is no task to switch to and focusing is the whole of the job |
 | Window row, dragged | Within its own task, reorders its windows — and that order is the stack a switch restores, top row in front. Onto another task row, moves it there. Onto the right-hand pane, unassigns it. Dropped on its own task anywhere but a window row, nothing happens |
 | Task row, right-clicked | Switch to this task · Rename (`F2`) · Reset time · Delete (`Del`) · Delete and Close. **Delete** hands the windows back to Unassigned and closes nothing; **Delete and Close** asks each of them to close first and deletes the task only if they all went — see [../workspaces/architecture.md](../workspaces/architecture.md#delete-and-close) |
-| Window row, right-clicked | Focus · Unassign · Move to · Edit re-attach rule… |
+| Window row, right-clicked | Focus · Unassign · Move to · Edit re-attach rule… — *Focus* is what a double-click does |
 | Unassigned pane | Every managed window belonging to no task. These stay visible through every switch |
 
 Row chips: **hidden** while HydraWin is the reason a window is off screen, and **won't hide** when
@@ -61,10 +62,11 @@ Rows are located by walking the visual tree for a tagged ancestor:
 | `Picker` | The crosshair, which handles its own press |
 | `Badge` | The notification badge, which handles its own press |
 
-A drag starts on **mouse-down** for a window row and on the system drag threshold for a task row —
-see [architecture.md](architecture.md#drag-and-drop). Adorners: `DragGhostAdorner` follows the
-pointer at window level, `HighlightAdorner` outlines a drop target, `InsertionAdorner` shows where a
-dragged task, or a window row moving within its own task, will land.
+A drag starts on the system drag threshold for both row kinds, because both carry a click action a
+drag must not steal — see [architecture.md](architecture.md#drag-and-drop). Adorners:
+`DragGhostAdorner` follows the pointer at window level, `HighlightAdorner` outlines a drop target,
+`InsertionAdorner` shows where a dragged task, or a window row moving within its own task, will
+land.
 
 ## Dialogs
 

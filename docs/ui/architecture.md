@@ -58,12 +58,17 @@ kinds here.
 The two payloads are a window handle and a task id; rows are found by walking the visual tree for a
 tagged ancestor. Details in [reference.md](reference.md#drag-and-drop-contract).
 
-**When a drag starts differs by row kind, and that is deliberate:**
+**Both row kinds wait for the movement threshold before a drag starts**, because both carry a click
+action a drag must not steal: a click on a task row switches to it, and a double-click on a window
+row focuses that window.
 
-- A **window row** begins its drag on mouse-*down*. It has no click action to protect, and
-  mouse-down is the moment the user expects to see they have picked something up.
-- A **task row** waits for the movement threshold. A click there switches tasks, so starting on the
-  press would make every switch a drag.
+A window row did not always wait. It used to begin its drag on mouse-*down* — it had no click action
+to protect, and mouse-down is the moment the user expects to see they have picked something up. What
+ended that was the double-click: `DragDrop.DoDragDrop` is a modal loop, so a drag begun on the first
+press swallows the second click and the gesture can never be seen. Deferring to the threshold
+removes the problem by construction rather than betting on WPF's click counter surviving the loop.
+The cost is a few pixels of movement before the ghost appears, which is what a task row has always
+done.
 
 **A window drag carries two meanings, chosen by whose row is under the pointer.** Over a window row
 of its *own* task it reorders — an insertion line, because that order is the stack a switch restores

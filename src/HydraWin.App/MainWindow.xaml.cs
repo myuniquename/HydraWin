@@ -247,20 +247,25 @@ public partial class MainWindow : Window
         pressedItem = DragDropSupport.FindDataContext<WindowViewModel>(e.OriginalSource)
             ?? (object?)DragDropSupport.FindDataContext<TaskViewModel>(e.OriginalSource);
 
-        // A window row has no click action to protect, so its drag begins on the press itself —
-        // which is the moment the user expects to see that they have picked something up. A task
-        // row cannot: a click there switches tasks, so it has to wait and see whether the pointer
-        // moves.
-        if (pressedItem is WindowViewModel)
+        // A double-click on a window row is the Focus command by a shorter route. It is decided
+        // here, ahead of any drag arming, and it is the reason a window row can no longer begin its
+        // drag on the press: DoDragDrop is a modal loop, and it would swallow the second click.
+        if (e.ClickCount >= 2 && pressedItem is WindowViewModel window)
         {
-            BeginDrag((DependencyObject)sender, e.OriginalSource);
+            pressedItem = null;
+            e.Handled = true;
+            viewModel.FocusWindowCommand.Execute(window);
         }
+
+        // Neither row kind starts its drag here. Both carry a click action now — a task row
+        // switches, a window row focuses — so both have to wait and see whether the pointer moves
+        // instead of committing on the press. See OnPaneMouseMove.
     }
 
     private void OnPaneMouseMove(object sender, MouseEventArgs e)
     {
         if (!dragging
-            && pressedItem is TaskViewModel
+            && pressedItem is not null
             && e.LeftButton == MouseButtonState.Pressed
             && DragDropSupport.PastDragThreshold(dragOrigin, e.GetPosition(this)))
         {

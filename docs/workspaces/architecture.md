@@ -197,6 +197,26 @@ What is left depends on where the switch came from, and it is only about the key
 Raising has to happen *before* focusing. Reversed, the `SetWindowPos` calls would push the other
 windows over the one that holds the keyboard.
 
+**Naming one window** is a third path: a double-click on a window row, right-click → *Focus*, or a
+click on a notification badge. `SwitchToWindow` switches to the window's task with focus, and then
+**restores the window if it is minimized** before it gives it the keyboard. `SetForegroundWindow`
+alone activates a minimized window where it sits, on the taskbar, and `GetForegroundWindow` then
+reports success all the same. `SW_RESTORE` brings the window back maximized if it was maximized
+when it was minimized. Three rules shape this:
+
+- **Only a named window is restored.** A task switch leaves a minimized window minimized. That is
+  how the user left the task, and they did not ask for that window in particular.
+- **The restore comes after the switch.** Until the switch has shown the window it may still be
+  hidden. And it can come back minimized from the switch itself, because the journaled placement
+  puts it back exactly as it was.
+- **A hidden window is never restored.** `SW_RESTORE` also *shows* a window, so it would put a
+  window on screen without `RestoreService`, which checks the window's identity and clears its
+  journal entry. A window that refused to come back in the switch stays hidden and stays on the
+  books.
+
+The restore activates the window, so it relies on the same foreground rights as
+`SetForegroundWindow`. It runs only on these click paths, while HydraWin is the foreground process.
+
 `SetForegroundWindow` works here only because HydraWin is the foreground process at the moment of a
 user-initiated switch, or holds the input state granted to a hotkey registrant on `WM_HOTKEY`.
 There is deliberately no `AttachThreadInput` workaround for paths where neither is true. The raise

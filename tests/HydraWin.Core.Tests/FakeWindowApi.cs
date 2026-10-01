@@ -147,6 +147,18 @@ internal sealed class FakeWindowApi : IWindowApi
         return true;
     }
 
+    public void RestoreIfMinimized(nint hwnd)
+    {
+        Calls.Add($"Restore(0x{hwnd:X})");
+
+        // Mirrors the real guard: SW_RESTORE would also show a hidden window, behind the journal's
+        // back, so a hidden one is left alone even when it is minimized.
+        if (windows.TryGetValue(hwnd, out FakeWindow? w) && w.Visible)
+        {
+            w.Minimized = false;
+        }
+    }
+
     public void Raise(nint hwnd)
     {
         Calls.Add($"Raise(0x{hwnd:X})");
@@ -183,6 +195,8 @@ internal sealed class FakeWindow
     internal string Title { get; set; } = string.Empty;
 
     internal bool Visible { get; set; }
+
+    internal bool Minimized { get; set; }
 
     internal WindowPlacement Placement { get; set; }
 }

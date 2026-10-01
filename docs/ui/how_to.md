@@ -36,6 +36,24 @@ reopening it — it rejoins in the slot it already held.
 Then work in the *bottom* window for a while and switch away and back again: the list has not moved,
 and neither has the stack.
 
+## Jump straight to one window
+
+**Double-click** its row. HydraWin switches to whichever task owns it and lands the keyboard in that
+window — the same thing right-click → *Focus* does, one gesture instead of two. It works on a row in
+the unassigned pane as well; there is no task to switch to there, so it simply takes the keyboard.
+
+A minimized window is restored first, so it does not sit on the taskbar with the keyboard. It comes
+back maximized if it was maximized when it was minimized. Clicking a task row does not do this: a
+window you minimized in a task stays minimized when you switch back to that task.
+
+This is why a window row waits for a small movement before it starts a drag: a drag begun on the
+press would swallow the second click. See *Drag and drop* in [architecture.md](architecture.md).
+
+**Verify:** the window comes to the front and typing goes into it. Do it on a row of a task that is
+*not* the active one and the whole task comes back with it. Minimize the window first and do it
+again: the window comes back to its normal size and takes the keyboard. Do it with a window that
+was maximized before it was minimized, and it comes back maximized.
+
 ## Rebind a hotkey
 
 1. **Settings… → Hotkeys.**
@@ -171,7 +189,8 @@ evidence. Run them in both themes and report what was observed.
    *Close to tray* must still show its checkmark.
 6. **Gestures.** Drag a window row onto a task (drop outline and wash), drag a window row within
    its own task (insertion line), drag a task row to reorder (insertion line), and run the
-   crosshair over another window (accent frame).
+   crosshair over another window (accent frame). Every drag now begins a few pixels into the
+   movement, window rows included, so move before looking for the ghost.
 7. **High contrast.** Settings → Accessibility → Contrast themes → *Desert* → Apply. HydraWin
    repaints in that scheme's own colours without a restart, and returns when it is turned off.
 
